@@ -1,0 +1,33 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    opster.io/opensearch-cluster: teeth-search
+    release: monitoring
+  name: my-teeth-search-monitor
+  namespace: default
+spec:
+  endpoints:
+  - basicAuth:
+      password:
+        key: password
+        name: teeth-search-admin-password
+      username:
+        key: username
+        name: teeth-search-admin-password
+    bearerTokenSecret:
+      key: ""
+    interval: 30s
+    path: /_prometheus/metrics
+    port: http
+  jobLabel: my-teeth-search-monitor
+  namespaceSelector:
+    matchNames:
+    - default
+  podTargetLabels:
+  - opster.io/opensearch-cluster
+  selector:
+    matchLabels:
+      opster.io/opensearch-cluster: teeth-search
+  targetLabels:
+  - opster.io/opensearch-cluster

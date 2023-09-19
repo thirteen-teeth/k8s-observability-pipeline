@@ -1,0 +1,16 @@
+# helm upgrade --install --debug -f teeth-monitoring.yaml --namespace monitoring --create-namespace prometheus-community/kube-prometheus-stack
+grafana:
+  enabled: true
+prometheus:
+  prometheusSpec:
+    storageSpec:
+     volumeClaimTemplate:
+       spec:
+         storageClassName: hostpath
+         accessModes: ["ReadWriteOnce"]
+         resources:
+           requests:
+             storage: 5Gi
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false
