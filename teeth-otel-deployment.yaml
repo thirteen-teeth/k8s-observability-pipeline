@@ -30,7 +30,7 @@ spec:
       resource:
         attributes:
           - key: service.name
-            value: "serviceName"
+            value: "upsertedServiceName"
             action: upsert
     exporters:
       clickhouse:

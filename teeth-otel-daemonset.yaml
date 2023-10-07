@@ -1,0 +1,139 @@
+# WIP
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: daemonset
+spec:
+  mode: daemonset
+  image: otel/opentelemetry-collector-contrib:latest
+  config: |
+    receivers:
+      filelog:
+        include:
+          - /var/log/pods/*/*/*.log
+        start_at: beginning
+        include_file_path: true
+        include_file_name: false
+        operators:
+          # Find out which format is used by kubernetes
+          - type: router
+            id: get-format
+            routes:
+              - output: parser-docker
+                expr: 'body matches "^\\{"'
+              - output: parser-crio
+                expr: 'body matches "^[^ Z]+ "'
+              - output: parser-containerd
+                expr: 'body matches "^[^ Z]+Z"'
+          # Parse CRI-O format
+          - type: regex_parser
+            id: parser-crio
+            regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
+            output: extract_metadata_from_filepath
+            timestamp:
+              parse_from: attributes.time
+              layout_type: gotime
+              layout: '2006-01-02T15:04:05.999999999Z07:00'
+          # Parse CRI-Containerd format
+          - type: regex_parser
+            id: parser-containerd
+            regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
+            output: extract_metadata_from_filepath
+            timestamp:
+              parse_from: attributes.time
+              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          # Parse Docker format
+          - type: json_parser
+            id: parser-docker
+            output: extract_metadata_from_filepath
+            timestamp:
+              parse_from: attributes.time
+              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          - type: move
+            from: attributes.log
+            to: body
+          # Extract metadata from file path
+          - type: regex_parser
+            id: extract_metadata_from_filepath
+            regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
+            parse_from: attributes["log.file.path"]
+            cache:
+              size: 128 # default maximum amount of Pods per Node is 110
+          # Rename attributes
+          - type: move
+            from: attributes["log.file.path"]
+            to: resource["filename"]
+          - type: move
+            from: attributes.container_name
+            to: resource["container"]
+          - type: move
+            from: attributes.namespace
+            to: resource["namespace"]
+          - type: move
+            from: attributes.pod_name
+            to: resource["pod"]
+          - type: add
+            field: resource["cluster"]
+            value: 'your-cluster-name' # Set your cluster name here
+    processors:
+      batch:
+        send_batch_size: 100000
+        timeout: 5s
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.cluster.name
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.pod.start_time
+            - k8s.cluster.uid
+          # Pod labels which can be fetched via K8sattributeprocessor
+          labels:
+            - tag_name: key1
+              key: label1
+              from: pod
+            - tag_name: key2
+              key: label2
+              from: pod
+        # Pod association using resource attributes and connection
+        pod_association:
+          - from: resource_attribute
+            name: k8s.pod.uid
+          - from: resource_attribute
+            name: k8s.pod.ip
+          - from: connection
+    exporters:
+      clickhouse:
+        endpoint: tcp://clickhouse-teeth-house.test-clickhouse-operator:9000
+        username: test
+        password: qwerty
+        database: otel
+        logs_table_name: otel_logs
+        traces_table_name: otel_traces
+        ttl_days: 3
+        timeout: 10s
+        sending_queue:
+          queue_size: 100
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+    extensions:
+      health_check:
+      pprof:
+      zpages:
+      memory_ballast:
+        size_mib: 1000
+    service:
+      extensions: [ pprof, zpages, health_check ]
+      pipelines:
+        logs:
+          receivers: [ filelog ]
+          processors: [ batch, k8sattributes ]
+          exporters: [ clickhouse ]

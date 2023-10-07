@@ -36,3 +36,12 @@ helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack 
   -f teeth-monitoring.yaml \
   --namespace monitoring \
   --create-namespace
+
+helm repo add opensearch-operator https://opster.github.io/opensearch-k8s-operator/
+helm repo update
+helm upgrade --install os-op opensearch-operator/opensearch-operator \
+  --namespace search \
+  --create-namespace \
+  --version 2.4.0
+
+kubectl -n search apply -f teeth-search.yaml
