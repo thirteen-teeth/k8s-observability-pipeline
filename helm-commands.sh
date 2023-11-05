@@ -23,7 +23,7 @@ helm upgrade --install tracing jaegertracing/jaeger-operator \
 helm upgrade --install my-strimzi-cluster-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator \
   --create-namespace \
   --namespace kafka \
-  --version 0.66.4 \
+  --version 0.38.0 \
   --set installCRDs=true
 
 helm upgrade --install my-otel-operator open-telemetry/opentelemetry-operator \
