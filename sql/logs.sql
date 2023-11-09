@@ -32,3 +32,5 @@ SETTINGS index_granularity=8192, ttl_only_drop_parts = 1;
 
 CREATE TABLE IF NOT EXISTS otel.otel_logs on cluster '{cluster}' AS otel.otel_logs_local
 ENGINE = Distributed('{cluster}', otel, otel_logs_local, rand());
+
+-- Change distribution to not use rand()
