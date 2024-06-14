@@ -2,7 +2,7 @@
 apiVersion: "clickhouse.altinity.com/v1"
 kind: "ClickHouseInstallation"
 metadata:
-  name: "house"
+  name: "small-house"
 spec:
   configuration:
     users:
@@ -22,12 +22,12 @@ spec:
         - host: zookeeper-2.zookeepers.zoo1ns
           port: 2181
     clusters:
-      - name: replicated
+      - name: unreplicated
         templates:
           podTemplate: pod-template-with-volumes
         layout:
-          shardsCount: 2
-          replicasCount: 2
+          shardsCount: 1
+          replicasCount: 1
   templates:
     podTemplates:
       - name: pod-template-with-volumes

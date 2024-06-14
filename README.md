@@ -76,6 +76,9 @@ kubectl apply -f zookeeper.yaml -n zoo1ns
 # to create clickhouse cluster with CRD
 # k -n olap apply -f house.yaml
 
+
+kubectl -n monitoring get secret my-monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+kubectl -n monitoring port-forward svc/my-monitoring-grafana 3000:80
 ```
 # Commands to run the demo
 

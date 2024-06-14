@@ -3,13 +3,13 @@ grafana:
 prometheus:
   prometheusSpec:
     storageSpec:
-     volumeClaimTemplate:
-       spec:
-         storageClassName: hostpath
-         accessModes: ["ReadWriteOnce"]
-         resources:
-           requests:
-             storage: 5Gi
+      volumeClaimTemplate:
+        spec:
+          storageClassName: hostpath
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
 prometheus-node-exporter:
   hostRootFsMount:
     enabled: false
