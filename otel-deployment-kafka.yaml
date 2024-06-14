@@ -51,7 +51,7 @@ spec:
       extensions: [ pprof, zpages, health_check ]
       pipelines:
         logs:
-          receivers: [ fluentforward ]
+          receivers: [ fluentforward, otlp ]
           processors: [ memory_limiter, resourcedetection/system, resource ]
           exporters: [ kafka ]
         # traces:

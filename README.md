@@ -39,7 +39,7 @@ helm upgrade --install my-otel-operator open-telemetry/opentelemetry-operator \
 # prometheus
 helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack \
   --version 48.1.1 \
-  -f teeth-monitoring.yaml \
+  -f monitoring.yaml \
   --namespace monitoring \
   --create-namespace
 

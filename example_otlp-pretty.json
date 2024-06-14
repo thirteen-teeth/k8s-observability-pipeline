@@ -1,0 +1,61 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "my-collector-kafka-collector-78f5959f87-xw2lz"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "linux"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "upsertedServiceName"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1703133144776326566",
+              "body": {
+                "kvlistValue": {
+                  "values": [
+                    {
+                      "key": "log",
+                      "value": {
+                        "stringValue": "Street Fighter 6"
+                      }
+                    }
+                  ]
+                }
+              },
+              "attributes": [
+                {
+                  "key": "wicked",
+                  "value": {
+                    "stringValue": "smart"
+                  }
+                }
+              ],
+              "traceId": "",
+              "spanId": ""
+            }
+          ]
+        }
+      ],
+      "schemaUrl": "https://opentelemetry.io/schemas/1.6.1"
+    }
+  ]
+}

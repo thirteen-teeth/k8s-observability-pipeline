@@ -5,31 +5,122 @@ metadata:
   namespace: logging
 data:
   fluent-bit.conf: |
+    [SERVICE]
+      Parsers_File  /fluent-bit/etc/parsers.conf
+
     [INPUT]
       Name dummy
       Tag aaaaaaaaaaa
-      # Metadata {"wicked": "smart"}
+      Metadata {"wicked": "smart"}
       Dummy {"log": "Street Fighter 6"}
       Rate .01
 
+    [INPUT]
+      Name      kafka
+      Tag       bbbbbbbbbbb
+      Brokers   teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+      Topics    otlp_logs
+      client_id fluent-bit
+
+    [FILTER]
+      Name               parser
+      Match               bbbbbbbbbbb
+      Key_Name            payload
+      Parser              json
+      Reserve_Data        On
+      Preserve_Key        On
+
     [OUTPUT]
-      Name forward
-      Match *
-      Host my-collector-kafka-collector.default.svc.cluster.local
-      Port 24224
+      Name  opensearch
+      Match bbbbbbbbbbb
+      Host  teeth-search-nodes.search.svc.cluster.local
+      Port  9200
+      Index otlp_logs
+      tls   On
+      HTTP_User admin
+      HTTP_Passwd admin
+      Tls.verify Off
+      Suppress_Type_Name On
 
     # [OUTPUT]
-    #   Name                 opentelemetry
-    #   Match                *
-    #   Host                 my-collector-kafka-collector.default.svc.cluster.local
-    #   Port                 4318
-    #   Metrics_uri          /v1/metrics
-    #   Logs_uri             /v1/logs
-    #   Traces_uri           /v1/traces
-    #   Log_response_payload True
-    #   Tls                  Off
-    #   Tls.verify           Off
-    #   add_label            fluent.tag {{.tag}}
+    #   Name forward
+    #   Match *
+    #   Host my-collector-kafka-collector.default.svc.cluster.local
+    #   Port 24224
+
+    # [OUTPUT]
+    #     Name        kafka
+    #     Match       *
+    #     Brokers     teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+    #     Topics      test-fluent-bit
+
+    [OUTPUT]
+      Name                 opentelemetry
+      Match                aaaaaaaaaaa
+      Host                 my-collector-kafka-collector.default.svc.cluster.local
+      Port                 4318
+      Metrics_uri          /v1/metrics
+      Logs_uri             /v1/logs
+      Traces_uri           /v1/traces
+      Log_response_payload True
+      Tls                  Off
+      Tls.verify           Off
+      add_label            fluent.tag {{.tag}}
+
+  parsers.conf: |
+    [PARSER]
+        Name   apache
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache2
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^ ]*) +\S*)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache_error
+        Format regex
+        Regex  ^\[[^ ]* (?<time>[^\]]*)\] \[(?<level>[^\]]*)\](?: \[pid (?<pid>[^\]]*)\])?( \[client (?<client>[^\]]*)\])? (?<message>.*)$
+
+    [PARSER]
+        Name   nginx
+        Format regex
+        Regex ^(?<remote>[^ ]*) (?<host>[^ ]*) (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   json
+        Format json
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    [PARSER]
+        # http://rubular.com/r/tjUt3Awgg4
+        Name cri
+        Format regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    [PARSER]
+        Name        syslog
+        Format      regex
+        Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
 
 ---
 apiVersion: v1

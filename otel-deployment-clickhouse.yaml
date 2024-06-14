@@ -29,8 +29,8 @@ spec:
           hostname_sources: [ "os" ]
       resource:
         attributes:
-          - key: service.name
-            value: "upsertedServiceName"
+          - key: ingested.by
+            value: "upsertedIngestedValue"
             action: upsert
     exporters:
       clickhouse:

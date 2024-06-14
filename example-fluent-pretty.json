@@ -1,0 +1,86 @@
+{
+  "date": 1713410346.98648,
+  "log": "{\"date\":1713410336.976424,\"log\":\"{\\\"date\\\":1713410050.557162,\\\"log\\\":\\\"        policy: ApplyOnNextReconcile\\\\n\\\",\\\"stream\\\":\\\"stderr\\\",\\\"time\\\":\\\"2024-04-18T03:14:10.557161761Z\\\",\\\"kubernetes\\\":{\\\"pod_name\\\":\\\"clickhouse-operator-7bf9fcd556-cqkjq\\\",\\\"namespace_name\\\":\\\"olap\\\",\\\"pod_id\\\":\\\"3c2f9f3b-425f-4d7c-b6c5-48c6f09706b9\\\",\\\"labels\\\":{\\\"app\\\":\\\"clickhouse-operator\\\",\\\"clickhouse.altinity.com/app\\\":\\\"chop\\\",\\\"clickhouse.altinity.com/chop\\\":\\\"0.23.5\\\",\\\"clickhouse.altinity.com/chop-commit\\\":\\\"bbbf66a\\\",\\\"clickhouse.altinity.com/chop-date\\\":\\\"2024-04-12T22.58.26\\\",\\\"pod-template-hash\\\":\\\"7bf9fcd556\\\"},\\\"annotations\\\":{\\\"clickhouse-operator-metrics/port\\\":\\\"9999\\\",\\\"clickhouse-operator-metrics/scrape\\\":\\\"true\\\",\\\"prometheus.io/port\\\":\\\"8888\\\",\\\"prometheus.io/scrape\\\":\\\"true\\\"},\\\"host\\\":\\\"docker-desktop\\\",\\\"container_name\\\":\\\"clickhouse-operator\\\",\\\"docker_id\\\":\\\"fe64eb0e95da6a0f71c0cd64d9b3b5cc91ca2b029576e7ebdafe9a214d48e084\\\",\\\"container_hash\\\":\\\"altinity/clickhouse-operator@sha256:24d35639db1981510ca81da6b116bde89059aff80828c459b94b5571d3d9a54f\\\",\\\"container_image\\\":\\\"altinity/clickhouse-operator:latest\\\"}}\\n\",\"stream\":\"stdout\",\"time\":\"2024-04-18T03:18:56.976424467Z\",\"log_processed\":{\"date\":1713410050.557162,\"log\":\"        policy: ApplyOnNextReconcile\",\"stream\":\"stderr\",\"time\":\"2024-04-18T03:14:10.557161761Z\",\"kubernetes\":{\"pod_name\":\"clickhouse-operator-7bf9fcd556-cqkjq\",\"namespace_name\":\"olap\",\"pod_id\":\"3c2f9f3b-425f-4d7c-b6c5-48c6f09706b9\",\"labels\":{\"app\":\"clickhouse-operator\",\"clickhouse.altinity.com/app\":\"chop\",\"clickhouse.altinity.com/chop\":\"0.23.5\",\"clickhouse.altinity.com/chop-commit\":\"bbbf66a\",\"clickhouse.altinity.com/chop-date\":\"2024-04-12T22.58.26\",\"pod-template-hash\":\"7bf9fcd556\"},\"annotations\":{\"clickhouse-operator-metrics/port\":\"9999\",\"clickhouse-operator-metrics/scrape\":\"true\",\"prometheus.io/port\":\"8888\",\"prometheus.io/scrape\":\"true\"},\"host\":\"docker-desktop\",\"container_name\":\"clickhouse-operator\",\"docker_id\":\"fe64eb0e95da6a0f71c0cd64d9b3b5cc91ca2b029576e7ebdafe9a214d48e084\",\"container_hash\":\"altinity/clickhouse-operator@sha256:24d35639db1981510ca81da6b116bde89059aff80828c459b94b5571d3d9a54f\",\"container_image\":\"altinity/clickhouse-operator:latest\"}},\"kubernetes\":{\"pod_name\":\"fluent-bit-n29rw\",\"namespace_name\":\"logging\",\"pod_id\":\"92764070-70ad-4129-ab44-3647d9ce6ea3\",\"labels\":{\"controller-revision-hash\":\"d9bb57974\",\"k8s-app\":\"fluent-bit-logging\",\"kubernetes.io/cluster-service\":\"true\",\"pod-template-generation\":\"1\",\"version\":\"v1\"},\"annotations\":{\"prometheus.io/path\":\"/api/v1/metrics/prometheus\",\"prometheus.io/port\":\"2020\",\"prometheus.io/scrape\":\"true\"},\"host\":\"docker-desktop\",\"container_name\":\"fluent-bit\",\"docker_id\":\"b3f05d96734dd6782bc5a4834f2a2f74213f0f66bfc750382087169662a2f2c7\",\"container_hash\":\"fluent/fluent-bit@sha256:41448b59d60226f8a7c7d613b0e72505e8463591dc7e4a1f224db0e660f89728\",\"container_image\":\"fluent/fluent-bit:1.5\"}}\n",
+  "stream": "stdout",
+  "time": "2024-04-18T03:19:06.986479749Z",
+  "log_processed": {
+    "date": 1713410336.976424,
+    "log": "{\"date\":1713410050.557162,\"log\":\"        policy: ApplyOnNextReconcile\\n\",\"stream\":\"stderr\",\"time\":\"2024-04-18T03:14:10.557161761Z\",\"kubernetes\":{\"pod_name\":\"clickhouse-operator-7bf9fcd556-cqkjq\",\"namespace_name\":\"olap\",\"pod_id\":\"3c2f9f3b-425f-4d7c-b6c5-48c6f09706b9\",\"labels\":{\"app\":\"clickhouse-operator\",\"clickhouse.altinity.com/app\":\"chop\",\"clickhouse.altinity.com/chop\":\"0.23.5\",\"clickhouse.altinity.com/chop-commit\":\"bbbf66a\",\"clickhouse.altinity.com/chop-date\":\"2024-04-12T22.58.26\",\"pod-template-hash\":\"7bf9fcd556\"},\"annotations\":{\"clickhouse-operator-metrics/port\":\"9999\",\"clickhouse-operator-metrics/scrape\":\"true\",\"prometheus.io/port\":\"8888\",\"prometheus.io/scrape\":\"true\"},\"host\":\"docker-desktop\",\"container_name\":\"clickhouse-operator\",\"docker_id\":\"fe64eb0e95da6a0f71c0cd64d9b3b5cc91ca2b029576e7ebdafe9a214d48e084\",\"container_hash\":\"altinity/clickhouse-operator@sha256:24d35639db1981510ca81da6b116bde89059aff80828c459b94b5571d3d9a54f\",\"container_image\":\"altinity/clickhouse-operator:latest\"}}",
+    "stream": "stdout",
+    "time": "2024-04-18T03:18:56.976424467Z",
+    "log_processed": {
+      "date": 1713410050.557162,
+      "log": "        policy: ApplyOnNextReconcile",
+      "stream": "stderr",
+      "time": "2024-04-18T03:14:10.557161761Z",
+      "kubernetes": {
+        "pod_name": "clickhouse-operator-7bf9fcd556-cqkjq",
+        "namespace_name": "olap",
+        "pod_id": "3c2f9f3b-425f-4d7c-b6c5-48c6f09706b9",
+        "labels": {
+          "app": "clickhouse-operator",
+          "clickhouse.altinity.com/app": "chop",
+          "clickhouse.altinity.com/chop": "0.23.5",
+          "clickhouse.altinity.com/chop-commit": "bbbf66a",
+          "clickhouse.altinity.com/chop-date": "2024-04-12T22.58.26",
+          "pod-template-hash": "7bf9fcd556"
+        },
+        "annotations": {
+          "clickhouse-operator-metrics/port": "9999",
+          "clickhouse-operator-metrics/scrape": "true",
+          "prometheus.io/port": "8888",
+          "prometheus.io/scrape": "true"
+        },
+        "host": "docker-desktop",
+        "container_name": "clickhouse-operator",
+        "docker_id": "fe64eb0e95da6a0f71c0cd64d9b3b5cc91ca2b029576e7ebdafe9a214d48e084",
+        "container_hash": "altinity/clickhouse-operator@sha256:24d35639db1981510ca81da6b116bde89059aff80828c459b94b5571d3d9a54f",
+        "container_image": "altinity/clickhouse-operator:latest"
+      }
+    },
+    "kubernetes": {
+      "pod_name": "fluent-bit-n29rw",
+      "namespace_name": "logging",
+      "pod_id": "92764070-70ad-4129-ab44-3647d9ce6ea3",
+      "labels": {
+        "controller-revision-hash": "d9bb57974",
+        "k8s-app": "fluent-bit-logging",
+        "kubernetes.io/cluster-service": "true",
+        "pod-template-generation": "1",
+        "version": "v1"
+      },
+      "annotations": {
+        "prometheus.io/path": "/api/v1/metrics/prometheus",
+        "prometheus.io/port": "2020",
+        "prometheus.io/scrape": "true"
+      },
+      "host": "docker-desktop",
+      "container_name": "fluent-bit",
+      "docker_id": "b3f05d96734dd6782bc5a4834f2a2f74213f0f66bfc750382087169662a2f2c7",
+      "container_hash": "fluent/fluent-bit@sha256:41448b59d60226f8a7c7d613b0e72505e8463591dc7e4a1f224db0e660f89728",
+      "container_image": "fluent/fluent-bit:1.5"
+    }
+  },
+  "kubernetes": {
+    "pod_name": "fluent-bit-n29rw",
+    "namespace_name": "logging",
+    "pod_id": "92764070-70ad-4129-ab44-3647d9ce6ea3",
+    "labels": {
+      "controller-revision-hash": "d9bb57974",
+      "k8s-app": "fluent-bit-logging",
+      "kubernetes.io/cluster-service": "true",
+      "pod-template-generation": "1",
+      "version": "v1"
+    },
+    "annotations": {
+      "prometheus.io/path": "/api/v1/metrics/prometheus",
+      "prometheus.io/port": "2020",
+      "prometheus.io/scrape": "true"
+    },
+    "host": "docker-desktop",
+    "container_name": "fluent-bit",
+    "docker_id": "b3f05d96734dd6782bc5a4834f2a2f74213f0f66bfc750382087169662a2f2c7",
+    "container_hash": "fluent/fluent-bit@sha256:41448b59d60226f8a7c7d613b0e72505e8463591dc7e4a1f224db0e660f89728",
+    "container_image": "fluent/fluent-bit:1.5"
+  }
+}
