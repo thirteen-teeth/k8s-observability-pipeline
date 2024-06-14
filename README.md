@@ -49,7 +49,7 @@ helm upgrade --install os-op opensearch-operator/opensearch-operator \
   --create-namespace \
   --version 2.4.0
 
-# clickhouse
+# install clickhouse operator
 # Namespace to install operator into
 OPERATOR_NAMESPACE="${OPERATOR_NAMESPACE:-olap}"
 # Namespace to install metrics-exporter into
@@ -72,6 +72,10 @@ kubectl apply --namespace="${OPERATOR_NAMESPACE}" -f <( \
 # zookeeper (required for clickhouse, kafka has built in zookeeper)
 kubectl create namespace zoo1ns
 kubectl apply -f zookeeper.yaml -n zoo1ns
+
+# to create clickhouse cluster with CRD
+# k -n olap apply -f house.yaml
+
 ```
 # Commands to run the demo
 
