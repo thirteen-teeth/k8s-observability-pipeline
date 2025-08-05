@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  namespace: kafka
+data:
+  vector.yaml: |
+    sources:
+      kafka_source:
+        type: kafka
+        bootstrap_servers: "teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092"
+        group_id: "vector-consumer-group"
+        topics:
+          - "otlp_logs"
+        auto_offset_reset: "earliest"
+        session_timeout_ms: 30000
+        socket_timeout_ms: 60000
+        fetch_wait_max_ms: 100
+        
+    transforms:
+      parse_logs:
+        type: remap
+        inputs:
+          - kafka_source
+        source: |
+          # Parse the message and add metadata
+          .timestamp = now()
+          .topic = "otlp_logs"
+          .partition = .kafka.partition
+          .offset = .kafka.offset
+          
+          # Try to parse JSON if possible
+          parsed_message, err = parse_json(.message)
+          if err == null {
+            .parsed_data = parsed_message
+          }
+          
+          # Keep original message
+          .original_message = .message
+
+    sinks:
+      stdout:
+        type: console
+        inputs:
+          - parse_logs
+        encoding:
+          codec: json
+        target: stdout
