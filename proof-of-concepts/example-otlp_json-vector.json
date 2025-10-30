@@ -1,0 +1,53 @@
+{
+  "headers": {},
+  "message": "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"host.name\",\"value\":{\"stringValue\":\"my-collector-kafka-collector-6c89d7497c-5pnzb\"}},{\"key\":\"os.type\",\"value\":{\"stringValue\":\"linux\"}},{\"key\":\"service.name\",\"value\":{\"stringValue\":\"upsertedServiceName\"}}]},\"schemaUrl\":\"https://opentelemetry.io/schemas/1.6.1\",\"scopeLogs\":[{\"scope\":{},\"logRecords\":[{\"timeUnixNano\":\"1754365916172159123\",\"body\":{\"stringValue\":\"{\\\"message\\\":\\\"King of the Pirates\\\"}\"}}]}]}]}",
+  "message_key": null,
+  "offset": null,
+  "original_message": "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"host.name\",\"value\":{\"stringValue\":\"my-collector-kafka-collector-6c89d7497c-5pnzb\"}},{\"key\":\"os.type\",\"value\":{\"stringValue\":\"linux\"}},{\"key\":\"service.name\",\"value\":{\"stringValue\":\"upsertedServiceName\"}}]},\"schemaUrl\":\"https://opentelemetry.io/schemas/1.6.1\",\"scopeLogs\":[{\"scope\":{},\"logRecords\":[{\"timeUnixNano\":\"1754365916172159123\",\"body\":{\"stringValue\":\"{\\\"message\\\":\\\"King of the Pirates\\\"}\"}}]}]}]}",
+  "parsed_data": {
+    "resourceLogs": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "host.name",
+              "value": {
+                "stringValue": "my-collector-kafka-collector-6c89d7497c-5pnzb"
+              }
+            },
+            {
+              "key": "os.type",
+              "value": {
+                "stringValue": "linux"
+              }
+            },
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "upsertedServiceName"
+              }
+            }
+          ]
+        },
+        "schemaUrl": "https://opentelemetry.io/schemas/1.6.1",
+        "scopeLogs": [
+          {
+            "logRecords": [
+              {
+                "body": {
+                  "stringValue": "{\"message\":\"King of the Pirates\"}"
+                },
+                "timeUnixNano": "1754365916172159123"
+              }
+            ],
+            "scope": {}
+          }
+        ]
+      }
+    ]
+  },
+  "partition": null,
+  "source_type": "kafka",
+  "timestamp": "2025-08-05T03:54:59.633514330Z",
+  "topic": "otlp_logs"
+}

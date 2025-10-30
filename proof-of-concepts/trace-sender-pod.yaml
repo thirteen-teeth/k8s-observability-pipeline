@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trace-sender
+  namespace: otel
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: [ "/bin/sh" ]
+    args: [ "-c", "sleep infinity" ]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+  restartPolicy: Never

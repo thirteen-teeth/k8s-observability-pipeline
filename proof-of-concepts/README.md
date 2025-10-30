@@ -5,8 +5,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo add jetstack https://charts.jetstack.io
 helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-helm repo add opensearch-operator https://opster.github.io/opensearch-k8s-operator/
-
+helm repo add opensearch-operator https://opensearch-project.github.io/opensearch-k8s-operator
 helm repo update
 
 # cert-manager (required for jaeger & otel-operator)
@@ -47,7 +46,9 @@ helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack 
 helm upgrade --install os-op opensearch-operator/opensearch-operator \
   --namespace search \
   --create-namespace \
-  --version 2.4.0
+  --version 2.8.0
+
+kubectl apply -f proof-of-concepts/kafka/search.yaml -n search
 
 # install clickhouse operator
 # Namespace to install operator into
@@ -90,8 +91,12 @@ WHERE Timestamp >= NOW() - INTERVAL 5 MINUTE
 ORDER BY Timestamp DESC
 ```
 
-```
+```Send logs to otel collector
 export log_date=$(date +%s%N); curl --header "Content-Type: application/json" --request POST --data '{"resourceLogs":[{"resource":{},"scopeLogs":[{"scope":{},"logRecords":[{"timeUnixNano":"'"$log_date"'","body":{"stringValue":"{\"message\":\"King of the Pirates\"}"},"traceId":"","spanId":""}]}]}]}' http://localhost:4318/v1/logs
+```
+
+```Send traces to otel collector
+export trace_date=$(date +%s)000000000; curl --header "Content-Type: application/json" --request POST --data '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"test-service"}}]},"scopeSpans":[{"scope":{},"spans":[{"traceId":"00000000000000000000000000000001","spanId":"0000000000000001","name":"test-span","startTimeUnixNano":"'"$trace_date"'","endTimeUnixNano":"'"$trace_date"'","attributes":[{"key":"operation","value":{"stringValue":"test-operation"}}]}]}]}]' http://localhost:4318/v1/traces
 ```
 
 ### Helpful Kafka Commands

@@ -5,6 +5,9 @@ metadata:
 spec:
   mode: deployment
   image: otel/opentelemetry-collector-contrib:latest
+  env:
+  - name: OTEL_LOG_LEVEL
+    value: "debug"
   config: |
     receivers:
       fluentforward:
@@ -16,9 +19,9 @@ spec:
           http:
             endpoint: 0.0.0.0:4318
     processors:
-      # batch:
-      #   send_batch_size: 100000
-      #   timeout: 5s
+      batch:
+        send_batch_size: 1000
+        timeout: 5s
       memory_limiter:
         check_interval: 2s
         limit_mib: 1800
@@ -33,26 +36,31 @@ spec:
             value: "upsertedServiceName"
             action: upsert
     exporters:
-      kafka:
+      kafka/logs:
         brokers:
           - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
         encoding: otlp_json
+        topic: otlp_logs
+      kafka/traces:
+        brokers:
+          - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+        encoding: otlp_json
+        topic: otlp_traces
     extensions:
       health_check:
+        endpoint: 0.0.0.0:13133
       pprof:
+        endpoint: 0.0.0.0:1777
       zpages:
-      basicauth/client:
-        client_auth:
-          username: admin
-          password: admin
+        endpoint: 0.0.0.0:55679
     service:
       extensions: [ pprof, zpages, health_check ]
       pipelines:
         logs:
           receivers: [ fluentforward, otlp ]
-          processors: [ memory_limiter, resourcedetection/system, resource ]
-          exporters: [ kafka ]
-        # traces:
-        #   receivers: [ otlp ]
-        #   processors: [ memory_limiter, resourcedetection/system, resource ]
-        #   exporters: [ kafka ]
+          processors: [ memory_limiter, batch, resourcedetection/system, resource ]
+          exporters: [ kafka/logs ]
+        traces:
+          receivers: [ otlp ]
+          processors: [ memory_limiter, batch, resourcedetection/system, resource ]
+          exporters: [ kafka/traces ]

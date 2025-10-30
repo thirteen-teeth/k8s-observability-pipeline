@@ -21,4 +21,5 @@ kubectl apply -f proof-of-concepts/kafka/queue.yaml -n kafka
 ### Install Opentelemetry Collector
 ```bash
 kubectl apply -f proof-of-concepts/otel-collector/otel-deployment-kafka.yaml -n otel
+kubectl delete -f proof-of-concepts/otel-collector/otel-deployment-kafka.yaml -n otel
 ```

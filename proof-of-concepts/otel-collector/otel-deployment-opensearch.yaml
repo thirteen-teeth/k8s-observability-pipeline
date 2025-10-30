@@ -1,0 +1,51 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: my-collector-opensearch
+spec:
+  mode: deployment
+  image: otel/opentelemetry-collector-contrib:latest
+  config: |
+    receivers:
+      kafka:
+        brokers:
+          - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+        topics:
+          - otlp_logs
+        group_id: "otel-collector-group"
+        auto_offset_reset: "earliest"
+        session_timeout_ms: 30000
+        socket_timeout_ms: 60000
+        fetch_wait_max_ms: 100
+    processors:
+      batch:
+        send_batch_size: 1000
+        timeout: 5s
+      memory_limiter:
+        check_interval: 2s
+        limit_mib: 1800
+        spike_limit_mib: 500
+      resourcedetection/system:
+        detectors: [ "system" ]
+        system:
+          hostname_sources: [ "os" ]
+      resource:
+        attributes:
+          - key: service.name
+            value: "upsertedServiceName"
+            action: upsert
+    exporters:
+      opensearch/logs:
+        http:
+          endpoint: https://teeth-search-dashboards.search:9200
+          tls:
+            insecure: true
+          auth:
+            authenticator: basicauth/client
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      basicauth/client:
+        client_auth:
+          username: admin
+          password: admin
