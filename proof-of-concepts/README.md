@@ -37,8 +37,8 @@ helm upgrade --install my-otel-operator open-telemetry/opentelemetry-operator \
 
 # prometheus
 helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack \
-  --version 48.1.1 \
-  -f monitoring.yaml \
+  --version 79.0.0 \
+  -f proof-of-concepts/prometheus/monitoring.yaml \
   --namespace monitoring \
   --create-namespace
 

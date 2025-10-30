@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: teeth-kafka-monitor
+  namespace: kafka
+  labels:
+    app: strimzi
+    strimzi.io/cluster: teeth-queue
+    release: my-monitoring
+spec:
+  podMetricsEndpoints:
+  - port: tcp-prometheus
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      strimzi.io/cluster: teeth-queue
+      strimzi.io/name: teeth-queue-kafka
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: teeth-zookeeper-monitor
+  namespace: kafka
+  labels:
+    app: strimzi
+    strimzi.io/cluster: teeth-queue
+    release: my-monitoring
+spec:
+  podMetricsEndpoints:
+  - port: tcp-prometheus
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      strimzi.io/cluster: teeth-queue
+      strimzi.io/name: teeth-queue-zookeeper

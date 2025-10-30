@@ -1,0 +1,129 @@
+---
+# Vector ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-server
+  labels:
+    app: vector-server
+    component: observability
+data:
+  vector.yaml: |
+    sources:
+      fluent_source:
+        type: fluent
+        address: "0.0.0.0:24224"
+      internal_metrics:
+        type: internal_metrics
+    transforms:
+      parse_logs:
+        type: remap
+        inputs:
+          - fluent_source
+        source: |
+          # Parse the message and add metadata
+          .@timestamp = now()
+          # Try to parse JSON if possible
+          parsed_message, err = parse_json(.message)
+          if err == null {
+            .parsed_data = parsed_message
+          }
+          # Keep original message
+          .original_message = .message
+    sinks:
+      kafka_sink:
+        type: kafka
+        inputs:
+          - parse_logs
+        bootstrap_servers: "teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092"
+        topic: "vector_logs"
+        encoding:
+          codec: json
+      prometheus_metrics:
+        type: prometheus_exporter
+        inputs:
+          - internal_metrics
+        address: "0.0.0.0:9598"
+        default_namespace: "vector"
+---
+# Vector Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vector-server
+  labels:
+    app: vector-server
+    component: observability
+spec:
+  restartPolicy: Never
+  containers:
+  - name: vector
+    image: timberio/vector:0.39.0-debian
+    command: [ "/bin/bash" ]
+    args: [ "-c", "vector --config /etc/vector/vector.yaml" ]
+    ports:
+    - containerPort: 24224
+      name: fluentd
+    - containerPort: 9598
+      name: metrics
+    volumeMounts:
+    - name: vector-config
+      mountPath: /etc/vector
+    env:
+    - name: VECTOR_LOG
+      value: "info"
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+  volumes:
+  - name: vector-config
+    configMap:
+      name: vector-server
+---
+# Vector Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-server-service
+  labels:
+    app: vector-server
+    component: observability
+spec:
+  selector:
+    app: vector-server
+  ports:
+  - name: fluentd
+    port: 24224
+    targetPort: 24224
+    protocol: TCP
+  - name: metrics
+    port: 9598
+    targetPort: 9598
+    protocol: TCP
+  type: ClusterIP
+---
+# Vector ServiceMonitor (requires Prometheus Operator)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vector-server-monitor
+  labels:
+    app: vector-server
+    component: observability
+    release: my-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: vector-server
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - default # Adjust this to your actual namespace
