@@ -1,12 +1,25 @@
 grafana:
   enabled: true
+  service:
+    type: NodePort
+    nodePort: 30300
 prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
   prometheusSpec:
+    additionalScrapeConfigs:
+    - job_name: windows-host-metrics
+      static_configs:
+      - targets:
+        - host.docker.internal:9877
+      metrics_path: /metrics
+      scheme: http
     storageSpec:
       volumeClaimTemplate:
         spec:
           storageClassName: hostpath
-          accessModes: ["ReadWriteOnce"]
+          accessModes: [ "ReadWriteOnce" ]
           resources:
             requests:
               storage: 5Gi

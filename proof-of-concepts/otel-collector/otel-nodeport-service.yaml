@@ -1,0 +1,31 @@
+# NodePort service for the OTel Collector deployment managed by the OTel Operator.
+# The operator creates its own ClusterIP service; this exposes the same pods
+# on the host network so external sources (Docker, apps, host tools) can send
+# telemetry without going through an Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-collector-kafka-nodeport
+  namespace: otel
+spec:
+  type: NodePort
+  selector:
+    # Labels set by the OTel Operator for OpenTelemetryCollector named "my-collector-kafka"
+    app.kubernetes.io/name: my-collector-kafka-collector
+    app.kubernetes.io/component: opentelemetry-collector
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+    nodePort: 30317 # OTLP gRPC
+    protocol: TCP
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    nodePort: 30318 # OTLP HTTP
+    protocol: TCP
+  - name: fluentforward
+    port: 24224
+    targetPort: 24224
+    nodePort: 30225 # FluentForward (30224 used by Vector)
+    protocol: TCP

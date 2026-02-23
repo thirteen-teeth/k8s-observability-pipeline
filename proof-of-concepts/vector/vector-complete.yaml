@@ -99,12 +99,13 @@ spec:
   - name: fluentd
     port: 24224
     targetPort: 24224
+    nodePort: 30224
     protocol: TCP
   - name: metrics
     port: 9598
     targetPort: 9598
     protocol: TCP
-  type: ClusterIP
+  type: NodePort
 ---
 # Vector ServiceMonitor (requires Prometheus Operator)
 apiVersion: monitoring.coreos.com/v1
