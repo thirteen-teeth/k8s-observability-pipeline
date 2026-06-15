@@ -296,6 +296,7 @@ gitops/
     operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator
   apps/
     base/                       # single source of truth for all envs (no overlays)
+      platform-endpoints.yaml   # ConfigMap of shared cross-app names/namespaces (postBuild substituteFrom)
       clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml (namespace: olap)
       kafka/                    # queue.yaml (Kafka + KafkaNodePool) + kafka-metrics ConfigMap (namespace: kafka)
       otel/                     # collector.yaml (namespace: otel)
@@ -373,6 +374,19 @@ Flux Kustomization consumes via `spec.postBuild.substituteFrom`. The base manife
 reference these with `${var:=default}` syntax, so they also build standalone (the default is
 the dev-sized value).
 
+The `apps` Kustomization substitutes from **two** ConfigMaps, in order:
+
+1. `platform-endpoints` (`gitops/apps/base/platform-endpoints.yaml`, `optional: true`) —
+   the single canonical home for cross-app wiring conventions (service names and
+   namespaces). Consumers compose their connection strings from these vars rather than
+   hardcoding DNS, e.g. the OTel collector targets
+   `${kafka_cluster_name}-kafka-brokers.${kafka_namespace}.svc.cluster.local:9092` and the
+   ClickHouse CR points its keeper nodes at `chk-N.${keeper_service}.${olap_namespace}`.
+   Shared by all environments; marked optional so the first reconcile falls back to the
+   base-manifest defaults before the ConfigMap exists.
+2. `cluster-vars` (`gitops/clusters/<env>/cluster-vars.yaml`) — per-environment values,
+   listed second so they win where keys overlap.
+
 The `apps` Kustomization also stamps platform labels on every managed resource via
 `spec.commonMetadata.labels` (`app.kubernetes.io/part-of: observability-platform`,
 `app.kubernetes.io/managed-by: flux`, and `environment: <env>`) without mutating selectors.
@@ -386,7 +400,7 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `keeper_spread_policy` (keeper topology spread `whenUnsatisfiable`) | `ScheduleAnyway` (single-node) | `DoNotSchedule` | `DoNotSchedule` |
 | `keeper_data_size` (keeper data PVC at `/var/lib/clickhouse-keeper`) | 1Gi | 10Gi | 50Gi |
 | `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
-| `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 3 | 6 / 6 | 6 / 6 |
+| `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 1 | 6 / 1 | 6 / 1 |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
 
 ### Bootstrap

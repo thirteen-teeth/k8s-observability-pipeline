@@ -40,13 +40,13 @@ spec:
     exporters:
       kafka/logs:
         brokers:
-          - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+          - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
         logs:
           encoding: otlp_json
           topic: otlp_logs
       kafka/traces:
         brokers:
-          - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
+          - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
         traces:
           encoding: otlp_json
           topic: otlp_traces

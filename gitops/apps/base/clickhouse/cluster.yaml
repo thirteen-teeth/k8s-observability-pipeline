@@ -17,11 +17,11 @@ spec:
         - "GRANT SELECT ON system.*"
     zookeeper:
       nodes:
-        - host: chk-0.zookeeper.olap
+        - host: chk-0.${keeper_service:=zookeeper}.${olap_namespace:=olap}
           port: 2181
-        - host: chk-1.zookeeper.olap
+        - host: chk-1.${keeper_service:=zookeeper}.${olap_namespace:=olap}
           port: 2181
-        - host: chk-2.zookeeper.olap
+        - host: chk-2.${keeper_service:=zookeeper}.${olap_namespace:=olap}
           port: 2181
     clusters:
       - name: replicated

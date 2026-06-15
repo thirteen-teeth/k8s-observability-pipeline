@@ -16,7 +16,10 @@ Environment differences (storage PVC sizes; ClickHouse shard/replica layout; kee
 topology-spread policy — relaxed to `ScheduleAnyway` for single-node `local`) live in
 `gitops/clusters/<env>/cluster-vars.yaml`
 and are injected into the base via the `apps` Kustomization's `postBuild.substituteFrom`.
-The base manifests reference them as `${var:=default}`.
+The base manifests reference them as `${var:=default}`. Cross-app wiring conventions shared
+by all environments (service names and namespaces, e.g. how the collector reaches Kafka)
+live once in `gitops/apps/base/platform-endpoints.yaml`, which the same `substituteFrom`
+also consumes.
 
 ### Bootstrap Flux against an environment
 

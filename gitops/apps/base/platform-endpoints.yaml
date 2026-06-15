@@ -1,0 +1,24 @@
+---
+# Platform wiring conventions — the single canonical home for the names and
+# namespaces that one app uses to reach another in-cluster. Consumers compose
+# their connection strings from these facts (Flux postBuild substitution), e.g.
+#   ${kafka_cluster_name}-kafka-brokers.${kafka_namespace}.svc.cluster.local:9092
+# so adding a new service that talks to Kafka/ClickHouse needs no new hardcoded
+# DNS — just reuse these vars. Change a name/namespace here and every consumer
+# follows. Per-environment values still live in clusters/<env>/cluster-vars.yaml;
+# this file holds platform-wide constants shared by all environments.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-endpoints
+  namespace: flux-system
+  labels:
+    # Re-run Kustomizations that substituteFrom this ConfigMap when it changes.
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  # Kafka (Strimzi). Service DNS is "<cluster>-kafka-<role>.<namespace>.svc.cluster.local".
+  kafka_cluster_name: "teeth-queue"
+  kafka_namespace: "kafka"
+  # ClickHouse Keeper alias Service + namespace, consumed by the ClickHouse CR.
+  keeper_service: "zookeeper"
+  olap_namespace: "olap"

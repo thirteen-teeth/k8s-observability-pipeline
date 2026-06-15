@@ -20,6 +20,13 @@ spec:
       environment: prod
   postBuild:
     substituteFrom:
+      # Shared platform wiring conventions (names/namespaces). Optional so the
+      # very first reconcile — before this ConfigMap is applied — falls back to
+      # the defaults baked into the base manifests instead of failing.
+      - kind: ConfigMap
+        name: platform-endpoints
+        optional: true
+      # Per-environment values (override platform defaults where they overlap).
       - kind: ConfigMap
         name: cluster-vars
   decryption:
