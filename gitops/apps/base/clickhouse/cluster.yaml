@@ -49,11 +49,11 @@ spec:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 5Gi
+              storage: "${ch_data_size:=5Gi}"
       - name: log-storage-vc-template
         spec:
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 2Gi
+              storage: "${ch_log_size:=2Gi}"

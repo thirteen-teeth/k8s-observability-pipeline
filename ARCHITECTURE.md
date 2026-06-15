@@ -288,18 +288,17 @@ gitops/
   clusters/
     local/ | dev/ | prod/      # per-environment Flux Kustomizations
       infrastructure.yaml       # Flux Kustomization -> gitops/infrastructure (wait: true)
-      apps.yaml                 # Flux Kustomization -> gitops/apps/overlays/<env> (dependsOn: infrastructure)
+      apps.yaml                 # Flux Kustomization -> gitops/apps/base (dependsOn: infrastructure)
+      cluster-vars.yaml         # ConfigMap of per-env values (postBuild substituteFrom)
   infrastructure/
     namespaces.yaml             # olap, kafka, otel
     sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry Helm repos
     operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator
   apps/
-    base/
+    base/                       # single source of truth for all envs (no overlays)
       clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml (namespace: olap)
       kafka/                    # queue.yaml (Kafka + KafkaNodePool) + kafka-metrics ConfigMap (namespace: kafka)
       otel/                     # collector.yaml (namespace: otel)
-    overlays/
-      local/ | dev/ | prod/     # JSON6902 patches for storage + anti-affinity
 ```
 
 > Secrets are encrypted at rest with **SOPS + age** (see *Secrets management* below).
@@ -367,14 +366,27 @@ comes from a Kubernetes Secret referenced by the CR
 
 ### Environments & Overrides
 
-Each overlay applies JSON6902 patches over the shared base. Currently overridden per env:
+All three environments reconcile the **same** `gitops/apps/base` — there are no overlays or
+per-env patches. Environment differences are expressed as values in a per-cluster
+`cluster-vars` ConfigMap (`gitops/clusters/<env>/cluster-vars.yaml`), which the `apps`
+Flux Kustomization consumes via `spec.postBuild.substituteFrom`. The base manifests
+reference these with `${var:=default}` syntax, so they also build standalone (the default is
+the dev-sized value).
 
-| Setting | local | dev | prod |
+The `apps` Kustomization also stamps platform labels on every managed resource via
+`spec.commonMetadata.labels` (`app.kubernetes.io/part-of: observability-platform`,
+`app.kubernetes.io/managed-by: flux`, and `environment: <env>`) without mutating selectors.
+
+> The Kafka `kafka-metrics` ConfigMap is annotated
+> `kustomize.toolkit.fluxcd.io/substitute: disabled` so its JMX exporter `$1`–`$5` regex
+> back-references are not touched by variable substitution.
+
+| `cluster-vars` key | local | dev | prod |
 |---|---|---|---|
-| Keeper pod anti-affinity | removed (single-node) | required | required |
-| Keeper PVCs (default/snapshot/log) | 1Gi / 1Gi / 512Mi | 10Gi / 10Gi / 1Gi | 50Gi / 50Gi / 5Gi |
-| ClickHouse PVCs (data/log) | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
-| Kafka node-pool PVC (broker JBOD) | 2Gi | 6Gi | 50Gi |
+| `keeper_spread_policy` (keeper topology spread `whenUnsatisfiable`) | `ScheduleAnyway` (single-node) | `DoNotSchedule` | `DoNotSchedule` |
+| `keeper_data_size` / `keeper_snapshot_size` / `keeper_log_size` | 1Gi / 1Gi / 512Mi | 10Gi / 10Gi / 1Gi | 50Gi / 50Gi / 5Gi |
+| `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
+| `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
 
 ### Bootstrap
 

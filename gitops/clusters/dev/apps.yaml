@@ -10,9 +10,18 @@ spec:
   timeout: 10m
   dependsOn:
     - name: infrastructure
-  path: ./gitops/apps/overlays/dev
+  path: ./gitops/apps/base
   prune: true
   wait: true
+  commonMetadata:
+    labels:
+      app.kubernetes.io/part-of: observability-platform
+      app.kubernetes.io/managed-by: flux
+      environment: dev
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
   decryption:
     provider: sops
     secretRef:

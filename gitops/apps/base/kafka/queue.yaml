@@ -20,7 +20,7 @@ spec:
     volumes:
       - id: 0
         type: persistent-claim
-        size: 6Gi
+        size: "${kafka_storage_size:=6Gi}"
         kraftMetadata: shared
         deleteClaim: false
 ---
@@ -68,6 +68,10 @@ metadata:
   namespace: kafka
   labels:
     app: strimzi
+  annotations:
+    # The JMX exporter rules below use $1-$5 regex back-references. Exclude this
+    # resource from Flux post-build variable substitution so they survive.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 data:
   kafka-metrics-config.yml: |
     # See https://github.com/prometheus/jmx_exporter for more info about JMX Prometheus Exporter metrics

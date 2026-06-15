@@ -29,18 +29,17 @@ spec:
     podTemplates:
       - name: default
         spec:
-          # Required anti-affinity for multi-node (dev/prod). The local overlay
-          # removes this so all 3 keeper replicas can schedule on a single node.
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchExpressions:
-                      - key: "app"
-                        operator: In
-                        values:
-                          - clickhouse-keeper
-                  topologyKey: "kubernetes.io/hostname"
+          # Spread keeper replicas across nodes. whenUnsatisfiable is set per
+          # environment via the cluster-vars ConfigMap (Flux postBuild):
+          # local (single-node) uses ScheduleAnyway so all 3 replicas can
+          # co-schedule; dev/prod use DoNotSchedule to force one per node.
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: "kubernetes.io/hostname"
+              whenUnsatisfiable: "${keeper_spread_policy:=DoNotSchedule}"
+              labelSelector:
+                matchLabels:
+                  app: clickhouse-keeper
           containers:
             - name: clickhouse-keeper
               imagePullPolicy: IfNotPresent
@@ -59,21 +58,21 @@ spec:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 10Gi
+              storage: "${keeper_data_size:=10Gi}"
       - name: snapshot-storage-path
         spec:
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 10Gi
+              storage: "${keeper_snapshot_size:=10Gi}"
       - name: log-storage-path
         spec:
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 1Gi
+              storage: "${keeper_log_size:=1Gi}"
 ---
 apiVersion: v1
 kind: Service

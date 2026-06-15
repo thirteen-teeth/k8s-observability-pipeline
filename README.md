@@ -2,19 +2,20 @@
 
 ## Deploy with FluxCD (recommended)
 
-Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, etc.) and then reconciles the application custom resources, with per-environment overrides for **local**, **dev**, and **prod**.
+Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, etc.) and then reconciles the application custom resources. All environments (**local**, **dev**, **prod**) share one base; per-environment values are supplied by a `cluster-vars` ConfigMap.
 
 ```
 gitops/
-  clusters/<env>/        # Flux Kustomizations: infrastructure + apps (per environment)
+  clusters/<env>/        # Flux Kustomizations (infrastructure + apps) + cluster-vars ConfigMap
   infrastructure/        # HelmRepositories + operator HelmReleases + namespaces
   apps/
-    base/                # curated ClickHouse keeper/cluster, Kafka, OTel collector
-    overlays/<env>/      # storage sizes + pod anti-affinity overrides
+    base/                # single source of truth: ClickHouse keeper/cluster, Kafka, OTel collector
 ```
 
-Environment differences (storage PVC sizes; keeper pod anti-affinity is disabled for
-single-node `local`) live in `gitops/apps/overlays/<env>/kustomization.yaml`.
+Environment differences (storage PVC sizes; keeper topology-spread policy — relaxed to
+`ScheduleAnyway` for single-node `local`) live in `gitops/clusters/<env>/cluster-vars.yaml`
+and are injected into the base via the `apps` Kustomization's `postBuild.substituteFrom`.
+The base manifests reference them as `${var:=default}`.
 
 ### Bootstrap Flux against an environment
 
@@ -34,8 +35,9 @@ flux bootstrap git \
 
 If your SSH key has a passphrase, add `--password=<passphrase>`.
 
-Flux then applies `infrastructure` (operators) and, once healthy, the `apps` overlay
-for that environment. Inspect reconciliation with:
+Flux then applies `infrastructure` (operators) and, once healthy, the `apps` Kustomization
+for that environment (substituting values from its `cluster-vars` ConfigMap). Inspect
+reconciliation with:
 
 ```bash
 flux get kustomizations --watch
@@ -61,5 +63,9 @@ To edit a secret, use `SOPS_AGE_KEY_FILE=.sops/age.key sops gitops/apps/base/cli
 ### Preview what an environment renders (no cluster needed)
 
 ```bash
-kubectl kustomize gitops/apps/overlays/local
+# Raw base (tokens unresolved):
+kubectl kustomize gitops/apps/base
+
+# Resolved for an env (export that env's cluster-vars values first):
+kubectl kustomize gitops/apps/base | flux envsubst
 ```

@@ -1,0 +1,23 @@
+---
+# Per-environment values consumed by the `apps` Kustomization via
+# spec.postBuild.substituteFrom. This is the single place to tune environment
+# differences (storage sizes, keeper spread policy) — there are no overlays or
+# kustomize patches.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-vars
+  namespace: flux-system
+  labels:
+    # Re-run the apps Kustomization immediately when these values change.
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  environment: "dev"
+  # Multi-node cluster: force one keeper replica per node.
+  keeper_spread_policy: "DoNotSchedule"
+  keeper_data_size: "10Gi"
+  keeper_snapshot_size: "10Gi"
+  keeper_log_size: "1Gi"
+  ch_data_size: "5Gi"
+  ch_log_size: "2Gi"
+  kafka_storage_size: "6Gi"
