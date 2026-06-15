@@ -10,7 +10,7 @@
 # ss4o_*/otel-* index families. No access to .opendistro_security, other
 # tenants' indices, or cluster administration.
 ---
-apiVersion: opensearch.opster.io/v1
+apiVersion: opensearch.org/v1
 kind: OpensearchRole
 metadata:
   name: otel-writer
@@ -41,7 +41,7 @@ spec:
         # manage: update mappings/settings on the indices it owns.
         - "manage"
 ---
-apiVersion: opensearch.opster.io/v1
+apiVersion: opensearch.org/v1
 kind: OpensearchUser
 metadata:
   name: otel-writer
@@ -55,7 +55,7 @@ spec:
     name: opensearch-etl-credentials
     key: otel_writer_password
 ---
-apiVersion: opensearch.opster.io/v1
+apiVersion: opensearch.org/v1
 kind: OpensearchUserRoleBinding
 metadata:
   name: otel-writer
