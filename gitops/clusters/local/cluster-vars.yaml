@@ -18,4 +18,7 @@ data:
   keeper_data_size: "1Gi"
   ch_data_size: "1Gi"
   ch_log_size: "512Mi"
+  # ClickHouse cluster topology (shards x replicas).
+  ch_shards_count: "3"
+  ch_replicas_count: "3"
   kafka_storage_size: "2Gi"

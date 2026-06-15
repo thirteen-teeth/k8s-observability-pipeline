@@ -386,6 +386,7 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `keeper_spread_policy` (keeper topology spread `whenUnsatisfiable`) | `ScheduleAnyway` (single-node) | `DoNotSchedule` | `DoNotSchedule` |
 | `keeper_data_size` (keeper data PVC at `/var/lib/clickhouse-keeper`) | 1Gi | 10Gi | 50Gi |
 | `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
+| `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 3 | 6 / 6 | 6 / 6 |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
 
 ### Bootstrap

@@ -28,8 +28,10 @@ spec:
         templates:
           podTemplate: pod-template-with-volumes
         layout:
-          shardsCount: 2
-          replicasCount: 2
+          # Topology is set per environment via the cluster-vars ConfigMap
+          # (Flux postBuild). Defaults match a small dev-sized cluster.
+          shardsCount: ${ch_shards_count:=2}
+          replicasCount: ${ch_replicas_count:=2}
   templates:
     podTemplates:
       - name: pod-template-with-volumes
