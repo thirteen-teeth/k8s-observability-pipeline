@@ -22,3 +22,5 @@ data:
   ch_shards_count: "6"
   ch_replicas_count: "1"
   kafka_storage_size: "50Gi"
+  # OpenSearch data-node PVC size (3 data nodes; disk-usage benchmark vs ClickHouse).
+  opensearch_disk_size: "100Gi"

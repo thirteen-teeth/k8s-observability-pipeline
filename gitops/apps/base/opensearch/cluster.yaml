@@ -1,0 +1,48 @@
+---
+# OpenSearch cluster for the ClickHouse-vs-OpenSearch disk-usage benchmark.
+# Reconciled by the OpenSearch (opster) operator installed under
+# gitops/infrastructure/operators/opensearch-operator.yaml.
+apiVersion: opensearch.opster.io/v1
+kind: OpenSearchCluster
+metadata:
+  name: teeth-search
+  namespace: search
+spec:
+  general:
+    serviceName: teeth-search
+    version: "2.19.3"
+    # The operator runs an init container per pod that sets
+    # vm.max_map_count=262144 (setVMMaxMapCount defaults to true), so no
+    # host-level sysctl tuning is required for OpenSearch to start.
+  nodePools:
+    # Dedicated cluster-manager (master) nodes. OpenSearch requires at least
+    # three master-eligible nodes — single-node clusters are not supported.
+    - component: masters
+      replicas: 3
+      diskSize: "2Gi"
+      roles:
+        - "cluster_manager"
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "250m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+    # Three dedicated data nodes — where indexed OTLP data (and therefore the
+    # on-disk footprint being benchmarked) lives. Data-node disk size is set
+    # per environment via the cluster-vars ConfigMap (Flux postBuild); the
+    # default matches a small dev-sized node.
+    - component: data
+      replicas: 3
+      diskSize: "${opensearch_disk_size:=5Gi}"
+      roles:
+        - "data"
+        - "ingest"
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "500m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"

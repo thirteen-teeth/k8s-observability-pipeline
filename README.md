@@ -2,14 +2,14 @@
 
 ## Deploy with FluxCD (recommended)
 
-Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, etc.) and then reconciles the application custom resources. All environments (**local**, **dev**, **prod**) share one base; per-environment values are supplied by a `cluster-vars` ConfigMap.
+Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, OpenSearch) and then reconciles the application custom resources. All environments (**local**, **dev**, **prod**) share one base; per-environment values are supplied by a `cluster-vars` ConfigMap.
 
 ```
 gitops/
   clusters/<env>/        # Flux Kustomizations (infrastructure + apps) + cluster-vars ConfigMap
   infrastructure/        # HelmRepositories + operator HelmReleases + namespaces
   apps/
-    base/                # single source of truth: ClickHouse keeper/cluster, Kafka, OTel collector
+    base/                # single source of truth: ClickHouse keeper/cluster, Kafka, OTel collector, OpenSearch
 ```
 
 Environment differences (storage PVC sizes; ClickHouse shard/replica layout; keeper

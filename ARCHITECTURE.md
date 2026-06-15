@@ -10,9 +10,11 @@ This repository defines a full-stack observability pipeline running on Kubernete
 
 The repository supports **two deployment paths**: a **legacy manual path** (apply the root
 and `proof-of-concepts/` manifests with `kubectl`/`helm`) and a **GitOps path** (FluxCD
-reconciles the pinned copies under `gitops/`). The GitOps path currently covers only
-ClickHouse, Kafka, and the OTel Collector (plus their operators); Prometheus/Grafana,
-Fluent Bit, and Vector remain manual-only. See [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
+reconciles the pinned copies under `gitops/`). The GitOps path currently covers ClickHouse,
+Kafka, the OTel Collector, and OpenSearch (plus their operators); Prometheus/Grafana,
+Fluent Bit, and Vector remain manual-only. OpenSearch is provisioned to **benchmark its
+on-disk storage footprint against ClickHouse** for the same OTel-sourced events. See
+[GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
 
 ---
 
@@ -112,6 +114,23 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 | `otel-deployment-opensearch.yaml` | OpenSearch |
 | `otel-deployment-elasticsearch.yaml` | Elasticsearch |
 | `otel-deployment-small-house.yaml` | ClickHouse (direct) |
+
+---
+
+### 7. OpenSearch (Search Engine — disk-usage benchmark)
+- **Operator**: [OpenSearch Kubernetes Operator](https://github.com/opensearch-project/opensearch-k8s-operator) (opster) — **GitOps-managed only** (versions in the [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section)
+- **Namespace**: `search`
+- **Purpose**: an alternative document store provisioned to **benchmark on-disk storage
+  footprint against ClickHouse** for the same OTel-sourced events.
+- **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + 3 dedicated
+  `data` (+ `ingest`) nodes. OpenSearch 2.19.3.
+- A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
+  (OpenSearch 2.10.0) and is **not** part of the legacy install order.
+
+> **Not yet wired:** the OTel Collector does not currently export to OpenSearch — only the
+> cluster is provisioned. Feeding it OTLP data (e.g. a Kafka→OpenSearch collector like the
+> experimental `proof-of-concepts/otel-collector/otel-deployment-opensearch.yaml`) is the
+> remaining step before the disk-usage benchmark can run.
 
 ---
 
@@ -230,11 +249,12 @@ Kafka JMX ───────────────────────�
 | `olap` | ClickHouse Cluster, ClickHouse Keeper | Yes |
 | `kafka` | Strimzi Kafka Cluster (`teeth-queue`) | Yes |
 | `otel` | OpenTelemetry Collector (Deployment + DaemonSet) | Yes |
+| `search` | OpenSearch Cluster (`teeth-search`) | Yes |
 | `logging` | Fluent Bit DaemonSet | No (manual only) |
 | `monitoring` | Prometheus, Grafana (kube-prometheus-stack) | No (manual only) |
 | `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret | GitOps path only |
 
-In the GitOps path, the `olap`, `kafka`, and `otel` namespaces are created by Flux
+In the GitOps path, the `olap`, `kafka`, `otel`, and `search` namespaces are created by Flux
 (`gitops/infrastructure/namespaces.yaml`); `logging` and `monitoring` are created by their
 manual install steps.
 
@@ -277,9 +297,10 @@ the manual `kubectl apply` steps above. All Flux-managed manifests live under `g
 and are **curated copies** of the source manifests (the experimental `proof-of-concepts/`
 alternatives are intentionally excluded).
 
-**Scope:** the GitOps path manages the three operators and the ClickHouse, Kafka, and OTel
-Collector workloads only. Prometheus/Grafana (`monitoring`), Fluent Bit (`logging`), and
-Vector are **not** Flux-managed and are still installed via the manual steps above.
+**Scope:** the GitOps path manages the four operators and the ClickHouse, Kafka, OTel
+Collector, and OpenSearch workloads only. Prometheus/Grafana (`monitoring`), Fluent Bit
+(`logging`), and Vector are **not** Flux-managed and are still installed via the manual
+steps above.
 
 ### Layout
 
@@ -291,15 +312,16 @@ gitops/
       apps.yaml                 # Flux Kustomization -> gitops/apps/base (dependsOn: infrastructure)
       cluster-vars.yaml         # ConfigMap of per-env values (postBuild substituteFrom)
   infrastructure/
-    namespaces.yaml             # olap, kafka, otel
-    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry Helm repos
-    operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator
+    namespaces.yaml             # olap, kafka, otel, search
+    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry, OpenSearch Helm repos
+    operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator, opensearch-operator
   apps/
     base/                       # single source of truth for all envs (no overlays)
       platform-endpoints.yaml   # ConfigMap of shared cross-app names/namespaces (postBuild substituteFrom)
       clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml (namespace: olap)
       kafka/                    # queue.yaml (Kafka + KafkaNodePool) + kafka-metrics ConfigMap (namespace: kafka)
       otel/                     # collector.yaml (namespace: otel)
+      opensearch/               # cluster.yaml (OpenSearchCluster, namespace: search)
 ```
 
 > Secrets are encrypted at rest with **SOPS + age** (see *Secrets management* below).
@@ -309,13 +331,14 @@ gitops/
 ### Operators (Flux-managed)
 
 Unlike the manual flow (which only installs the ClickHouse operator), Flux installs all
-three operators as `HelmRelease` resources:
+four operators as `HelmRelease` resources:
 
 | Operator | Namespace | Helm repo | Chart version | Notes |
 |---|---|---|---|---|
 | Altinity ClickHouse operator | `olap` | `https://docs.altinity.com/clickhouse-operator/` | `0.27.1` | Provides ClickHouse(Keeper)Installation CRDs |
 | Strimzi Kafka operator | `kafka` | `https://strimzi.io/charts/` | `1.0.0` | KRaft-only (no ZooKeeper); `watchNamespaces: [kafka]` |
 | OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
+| OpenSearch (opster) operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `2.8.2` | Latest 2.x line (for OpenSearch 2.x clusters); admission `webhook` disabled to avoid a cert-manager dependency |
 
 All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
 Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
@@ -344,6 +367,7 @@ manifests are the source of truth — see them rather than a hand-synced list:
 - `gitops/apps/base/otel/collector.yaml` — OTel Collector image
 - `gitops/apps/base/clickhouse/cluster.yaml` — ClickHouse server image
 - `gitops/apps/base/clickhouse/keeper.yaml` — ClickHouse Keeper image
+- `gitops/apps/base/opensearch/cluster.yaml` — OpenSearch version (`general.version`, operator derives the image)
 
 These intentionally differ from the legacy manual manifests (which still use `latest` /
 `head-alpine`); see the **Components** section for the legacy values.
@@ -402,6 +426,7 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
 | `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 1 | 6 / 1 | 6 / 1 |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
+| `opensearch_disk_size` (OpenSearch data-node PVC; 3 data nodes) | 5Gi | 10Gi | 100Gi |
 
 ### Bootstrap
 
@@ -431,6 +456,8 @@ flux bootstrap git \
 | ClickHouse Keeper | 7000 | — | Prometheus metrics (internal) |
 | Kafka | 9092 | — | Plaintext (internal) |
 | Kafka | 9093 | — | TLS (internal) |
+| OpenSearch | 9200 | — | REST/HTTP API (internal) |
+| OpenSearch | 9300 | — | Transport (internal) |
 | Grafana | — | 30300 | NodePort UI |
 | Prometheus | — | 30090 | NodePort UI |
 | Windows host exporter | 9877 | — | Custom metrics endpoint (host) |

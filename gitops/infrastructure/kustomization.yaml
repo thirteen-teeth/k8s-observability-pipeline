@@ -6,3 +6,4 @@ resources:
   - operators/clickhouse-operator.yaml
   - operators/strimzi-operator.yaml
   - operators/otel-operator.yaml
+  - operators/opensearch-operator.yaml

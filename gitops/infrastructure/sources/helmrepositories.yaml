@@ -28,3 +28,13 @@ metadata:
 spec:
   interval: 1h
   url: https://open-telemetry.github.io/opentelemetry-helm-charts
+---
+# OpenSearch (opster) operator chart
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: opensearch-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://opensearch-project.github.io/opensearch-k8s-operator/
