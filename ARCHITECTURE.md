@@ -118,12 +118,12 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 ---
 
 ### 7. OpenSearch (Search Engine — disk-usage benchmark)
-- **Operator**: [OpenSearch Kubernetes Operator](https://github.com/opensearch-project/opensearch-k8s-operator) (opster) — **GitOps-managed only** (versions in the [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section)
+- **Operator**: [OpenSearch Kubernetes Operator](https://github.com/opensearch-project/opensearch-k8s-operator) — **GitOps-managed only** (versions in the [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section)
 - **Namespace**: `search`
 - **Purpose**: an alternative document store provisioned to **benchmark on-disk storage
   footprint against ClickHouse** for the same OTel-sourced events.
 - **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + 3 dedicated
-  `data` (+ `ingest`) nodes. OpenSearch 2.19.3.
+  `data` (+ `ingest`) nodes. OpenSearch 3.7.0.
 - A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
   (OpenSearch 2.10.0) and is **not** part of the legacy install order.
 
@@ -338,7 +338,7 @@ four operators as `HelmRelease` resources:
 | Altinity ClickHouse operator | `olap` | `https://docs.altinity.com/clickhouse-operator/` | `0.27.1` | Provides ClickHouse(Keeper)Installation CRDs |
 | Strimzi Kafka operator | `kafka` | `https://strimzi.io/charts/` | `1.0.0` | KRaft-only (no ZooKeeper); `watchNamespaces: [kafka]` |
 | OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
-| OpenSearch (opster) operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `2.7.0` | Pinned to the 2.x line for OpenSearch 2.x clusters. 2.8.x is avoided: those charts pass a `--enable-webhooks` flag the pinned `2.8.0` operator image doesn't support (crash loop); 2.7.0 predates it and needs no cert-manager. |
+| OpenSearch operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `3.0.2` | Latest operator line (image appVersion `3.0.0-alpha`), targeting OpenSearch 3.x clusters. The chart's validating webhook defaults to a cert-manager-issued cert, so it's disabled via `webhook.enabled: false` (this repo has no cert-manager); the operator still reconciles `OpenSearchCluster` resources without it. |
 
 All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
 Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
