@@ -119,7 +119,7 @@ spec:
           basicAuth: true
           basicAuthUser: $OPENSEARCH_USER
           jsonData:
-            flavor: OpenSearch
+            flavor: opensearch
             version: "3.6.0"
             database: "ss4o_*"
             timeField: "@timestamp"
