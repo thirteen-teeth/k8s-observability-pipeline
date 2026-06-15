@@ -50,8 +50,10 @@ flux get helmreleases -A
 
 ### Secrets (SOPS + age)
 
-ClickHouse credentials are stored encrypted with [SOPS](https://github.com/getsops/sops)
-+ [age](https://github.com/FiloSottile/age) (`gitops/apps/base/clickhouse/secret.yaml`).
+Credentials are stored encrypted with [SOPS](https://github.com/getsops/sops)
++ [age](https://github.com/FiloSottile/age) — the ClickHouse credentials
+(`gitops/apps/base/clickhouse/secret.yaml`) and the OpenSearch admin credentials
+(`gitops/apps/base/opensearch/admin-secret.yaml`).
 The age recipient is in `.sops.yaml`; the private key `.sops/age.key` is gitignored and
 must **not** be committed. Before bootstrapping a cluster, load the key so Flux can
 decrypt:
@@ -62,7 +64,8 @@ kubectl create secret generic sops-age \
   --from-file=age.agekey=.sops/age.key
 ```
 
-To edit a secret, use `SOPS_AGE_KEY_FILE=.sops/age.key sops gitops/apps/base/clickhouse/secret.yaml`.
+To edit a secret, use `SOPS_AGE_KEY_FILE=.sops/age.key sops <path-to-secret>` (e.g.
+`gitops/apps/base/opensearch/admin-secret.yaml`).
 
 ### Preview what an environment renders (no cluster needed)
 

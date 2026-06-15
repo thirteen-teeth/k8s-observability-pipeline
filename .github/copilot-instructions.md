@@ -1,5 +1,47 @@
 # Copilot Instructions
 
+## Never Commit Plaintext Secrets (Use SOPS + age)
+
+This repository encrypts all Kubernetes `Secret` data at rest with **SOPS + age**, and Flux
+decrypts it at apply time. Any `Secret` (or other object carrying credentials) committed
+under `gitops/` **must** have its `data`/`stringData` SOPS-encrypted — never commit a
+plaintext password, token, key, or certificate private key.
+
+When adding or editing a secret:
+
+- Write the `Secret` manifest, then encrypt in place with
+  `sops --encrypt --in-place <file>` (the `.sops.yaml` creation rule encrypts only
+  `data`/`stringData` for files matching `gitops/.*\.ya?ml$`). To edit an existing one, use
+  `sops <file>` (with `SOPS_AGE_KEY_FILE=.sops/age.key` if the key isn't in the default path).
+- Confirm the committed file shows `ENC[AES256_GCM,...]` values and a `sops:` block — verify
+  with `sops --decrypt <file>` and by grepping the working tree for the plaintext value.
+- Ensure the consuming Flux Kustomization has
+  `decryption: { provider: sops, secretRef: { name: sops-age } }` (the `apps.yaml`
+  Kustomizations already do).
+- Model new secrets on the existing encrypted ones
+  (`gitops/apps/base/clickhouse/secret.yaml`, `gitops/apps/base/opensearch/admin-secret.yaml`).
+
+Never commit the age private key (`.sops/age.key`); it is gitignored. If a plaintext secret
+is ever committed, treat the value as compromised — rotate it, since encrypting later does
+not remove it from Git history.
+
+## Watching Long-Running Operations (Don't Block on Waits)
+
+When monitoring rollouts, reconciliations, or pods coming up, **don't use blocking
+wait commands** like `kubectl wait --for=condition=Ready --timeout=...`, `kubectl
+rollout status`, `flux ... --wait`, or `sleep`. They rarely finish within a single
+step, get pushed into a background terminal, and then replay a large stale scrollback
+buffer that's easy to misread as the current state.
+
+Instead, poll with quick one-shot status commands that return immediately and re-run
+them as needed — for example:
+
+- `kubectl -n <ns> get pods` / `kubectl -n <ns> get sts` for rollout progress
+- `kubectl -n <ns> get helmrelease,kustomization` for Flux status
+- `kubectl -n <ns> logs <pod> --tail=N` for a bounded log snapshot
+
+Each poll shows fresh output, keeps the terminal free, and avoids scrollback confusion.
+
 ## Keep Documentation in Sync with the Code
 
 `ARCHITECTURE.md` is the authoritative running document describing this repository's

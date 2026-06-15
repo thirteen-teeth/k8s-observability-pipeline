@@ -127,9 +127,8 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 - **Admin credentials**: OpenSearch 3.x's security plugin enforces a password-strength
   regex on `OPENSEARCH_INITIAL_ADMIN_PASSWORD`, and the operator's auto-generated value
   fails it. A compliant secret (`teeth-search-admin-password`, keys `username`/`password`)
-  is therefore committed alongside the cluster, mirroring how the ClickHouse credentials are
-  stored. It is fine for this throwaway benchmark cluster; rotate/seal it before any
-  non-throwaway use.
+  is therefore committed alongside the cluster, SOPS-encrypted exactly like the ClickHouse
+  credentials (see [Secrets management](#secrets-management-sops--age)).
 - **TLS**: `spec.security.tls.{transport,http}.generate: true` lets the operator issue a
   self-signed CA plus transport/HTTP/admin certs, enable the security plugin, and use HTTPS
   readiness probes. Without it the operator leaves security disabled and probes nodes over
@@ -384,14 +383,17 @@ These intentionally differ from the legacy manual manifests (which still use `la
 
 ### Secrets management (SOPS + age)
 
-ClickHouse credentials are no longer stored in plaintext. The `test` user password now
-comes from a Kubernetes Secret referenced by the CR
-(`test/k8s_secret_password: olap/clickhouse-credentials/password`).
+Credentials are never stored in plaintext. Each `Secret` is SOPS-encrypted (only `data` /
+`stringData`, per `.sops.yaml`) and Flux decrypts it at apply time.
 
-- `gitops/apps/base/clickhouse/secret.yaml` is a SOPS-encrypted `Secret` (only `data` /
-  `stringData` are encrypted, per `.sops.yaml`).
+- `gitops/apps/base/clickhouse/secret.yaml` (`olap/clickhouse-credentials`) — the ClickHouse
+  `test` user password, referenced by the CR via
+  `test/k8s_secret_password: olap/clickhouse-credentials/password`.
+- `gitops/apps/base/opensearch/admin-secret.yaml` (`search/teeth-search-admin-password`) —
+  the OpenSearch initial admin `username`/`password`.
 - Each cluster's `apps.yaml` Flux Kustomization has
   `decryption: { provider: sops, secretRef: { name: sops-age } }`.
+- Edit secrets in place with `sops <file>`; never commit a decrypted `Secret`.
 - One-time per cluster, create the decryption key secret from the gitignored private key:
   ```bash
   kubectl create secret generic sops-age \
