@@ -539,6 +539,8 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 1 | 6 / 1 | 6 / 1 |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
 | `opensearch_disk_size` (OpenSearch data-node PVC; 3 data nodes) | 5Gi | 10Gi | 100Gi |
+| `opensearch_master_mem` (OpenSearch master memory request=limit; 3 master nodes) | 512Mi | 1Gi | 1Gi |
+| `opensearch_data_mem` (OpenSearch data memory request=limit; 3 data nodes) | 1Gi | 2Gi | 2Gi |
 
 ### Bootstrap
 

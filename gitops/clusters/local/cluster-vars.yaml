@@ -24,3 +24,8 @@ data:
   kafka_storage_size: "2Gi"
   # OpenSearch data-node PVC size (3 data nodes; disk-usage benchmark vs ClickHouse).
   opensearch_disk_size: "5Gi"
+  # Shrink OpenSearch memory requests/limits for a single 16GB workstation
+  # (defaults are 1Gi master / 2Gi data per node, i.e. 9Gi total across the 6
+  # nodes). These bring the cluster down to 3x512Mi + 3x1Gi = 4.5Gi total.
+  opensearch_master_mem: "512Mi"
+  opensearch_data_mem: "1Gi"

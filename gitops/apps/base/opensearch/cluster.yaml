@@ -37,10 +37,10 @@ spec:
         - "cluster_manager"
       resources:
         requests:
-          memory: "1Gi"
+          memory: "${opensearch_master_mem:=1Gi}"
           cpu: "250m"
         limits:
-          memory: "1Gi"
+          memory: "${opensearch_master_mem:=1Gi}"
           cpu: "500m"
     # Three dedicated data nodes — where indexed OTLP data (and therefore the
     # on-disk footprint being benchmarked) lives. Data-node disk size is set
@@ -54,8 +54,8 @@ spec:
         - "ingest"
       resources:
         requests:
-          memory: "2Gi"
+          memory: "${opensearch_data_mem:=2Gi}"
           cpu: "500m"
         limits:
-          memory: "2Gi"
+          memory: "${opensearch_data_mem:=2Gi}"
           cpu: "1000m"
