@@ -26,6 +26,11 @@ data:
   opensearch_disk_size: "5Gi"
   # Shrink OpenSearch memory requests/limits for a single 16GB workstation
   # (defaults are 1Gi master / 2Gi data per node, i.e. 9Gi total across the 6
-  # nodes). These bring the cluster down to 3x512Mi + 3x1Gi = 4.5Gi total.
-  opensearch_master_mem: "512Mi"
+  # nodes). These bring the cluster down to 3x1Gi + 3x1Gi = 6Gi total.
+  #
+  # 1Gi is the floor: the operator auto-sizes the JVM heap to ~50% of the memory
+  # limit, so 512Mi -> -Xmx256M, which is too small for an OpenSearch 3.7 node's
+  # off-heap footprint (Lucene, threads, metaspace, and the kNN/neural/gRPC
+  # plugins that load regardless of node role) and OOMKills the pod on startup.
+  opensearch_master_mem: "1Gi"
   opensearch_data_mem: "1Gi"
