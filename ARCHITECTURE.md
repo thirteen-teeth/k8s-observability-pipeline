@@ -11,8 +11,8 @@ This repository defines a full-stack observability pipeline running on Kubernete
 The repository supports **two deployment paths**: a **legacy manual path** (apply the root
 and `proof-of-concepts/` manifests with `kubectl`/`helm`) and a **GitOps path** (FluxCD
 reconciles the pinned copies under `gitops/`). The GitOps path currently covers ClickHouse,
-Kafka, the OTel Collector, and OpenSearch (plus their operators); Prometheus/Grafana,
-Fluent Bit, and Vector remain manual-only. OpenSearch is provisioned to **benchmark its
+Kafka, the OTel Collector, OpenSearch, and the Prometheus/Grafana monitoring stack (plus
+their operators); Fluent Bit and Vector remain manual-only. OpenSearch is provisioned to **benchmark its
 on-disk storage footprint against ClickHouse** for the same OTel-sourced events. See
 [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
 
@@ -127,7 +127,7 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 - **Purpose**: an alternative document store provisioned to **benchmark on-disk storage
   footprint against ClickHouse** for the same OTel-sourced events.
 - **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + 3 dedicated
-  `data` (+ `ingest`) nodes. OpenSearch 3.7.0.
+  `data` (+ `ingest`) nodes. OpenSearch 3.6.0.
 - **Admin credentials**: OpenSearch 3.x's security plugin enforces a password-strength
   regex on `OPENSEARCH_INITIAL_ADMIN_PASSWORD`, and the operator's auto-generated value
   fails it. A compliant secret (`teeth-search-admin-password`, keys `username`/`password`)
@@ -174,6 +174,12 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 ---
 
 ### 6. Prometheus + Grafana (Metrics)
+
+> This section describes the **legacy manual path** (`proof-of-concepts/prometheus/monitoring.yaml`
+> + `helm install`). The **GitOps path** now runs its own pinned `kube-prometheus-stack`
+> with full per-component scraping and provisioned data sources — see
+> [Monitoring (Prometheus + Grafana, GitOps)](#monitoring-prometheus--grafana-gitops).
+
 - **Helm Chart**: `prometheus-community/kube-prometheus-stack` (pinned chart version in the **Install Order** install command below)
 - **Release name**: `my-monitoring`
 - **Namespace**: `monitoring`
@@ -255,10 +261,14 @@ Vector ────────────────────────�
       coordinated by CH Keeper
 
 Windows Host (:9877) ─────────────────────────────────► Prometheus (:30090)
-Vector metrics (:9598) ───────────────────────────────► Prometheus
-Kafka JMX ────────────────────────────────────────────► Prometheus
+Kafka (broker JMX :9404 + Kafka Exporter) ────────────► Prometheus
+ClickHouse (server :9363, Keeper :7000) ──────────────► Prometheus
+OpenSearch (:9200 /_prometheus/metrics) ──────────────► Prometheus
+OTel Collectors (:8888) ──────────────────────────────► Prometheus
+node-exporter / kube-state-metrics ───────────────────► Prometheus
                                                                 ▼
-                                                            Grafana
+                                                       Grafana (:30300)
+                              data sources: Prometheus, ClickHouse, OpenSearch
 ```
 
 ---
@@ -272,12 +282,12 @@ Kafka JMX ───────────────────────�
 | `otel` | OpenTelemetry Collectors (OTLP producer + Kafka→ClickHouse/OpenSearch ETLs) + DaemonSet | Yes |
 | `search` | OpenSearch Cluster (`teeth-search`) | Yes |
 | `logging` | Fluent Bit DaemonSet | No (manual only) |
-| `monitoring` | Prometheus, Grafana (kube-prometheus-stack) | No (manual only) |
+| `monitoring` | Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics (kube-prometheus-stack) | Yes |
 | `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret | GitOps path only |
 
-In the GitOps path, the `olap`, `kafka`, `otel`, and `search` namespaces are created by Flux
-(`gitops/infrastructure/namespaces.yaml`); `logging` and `monitoring` are created by their
-manual install steps.
+In the GitOps path, the `olap`, `kafka`, `otel`, `search`, and `monitoring` namespaces are
+created by Flux (`gitops/infrastructure/namespaces.yaml`); `logging` is created by its
+manual install step.
 
 ---
 
@@ -318,9 +328,9 @@ the manual `kubectl apply` steps above. All Flux-managed manifests live under `g
 and are **curated copies** of the source manifests (the experimental `proof-of-concepts/`
 alternatives are intentionally excluded).
 
-**Scope:** the GitOps path manages the four operators and the ClickHouse, Kafka, OTel
-Collector, and OpenSearch workloads only. Prometheus/Grafana (`monitoring`), Fluent Bit
-(`logging`), and Vector are **not** Flux-managed and are still installed via the manual
+**Scope:** the GitOps path manages the five operator releases and the ClickHouse, Kafka,
+OTel Collector, OpenSearch, and Prometheus/Grafana monitoring workloads. Fluent Bit
+(`logging`) and Vector are **not** Flux-managed and are still installed via the manual
 steps above.
 
 ### Layout
@@ -333,20 +343,24 @@ gitops/
       apps.yaml                 # Flux Kustomization -> gitops/apps/base (dependsOn: infrastructure)
       cluster-vars.yaml         # ConfigMap of per-env values (postBuild substituteFrom)
   infrastructure/
-    namespaces.yaml             # olap, kafka, otel, search
-    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry, OpenSearch Helm repos
-    operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator, opensearch-operator
+    namespaces.yaml             # olap, kafka, otel, search, monitoring
+    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry, OpenSearch, prometheus-community Helm repos
+    operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator, opensearch-operator,
+                                #   kube-prometheus-stack + monitoring-credentials.yaml (SOPS Grafana/datasource creds)
   apps/
     base/                       # single source of truth for all envs (no overlays)
       platform-endpoints.yaml   # ConfigMap of shared cross-app names/namespaces (postBuild substituteFrom)
-      clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml (namespace: olap)
+      clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml,
+                                #   scrapeconfigs.yaml (server/keeper Prometheus ScrapeConfigs) (namespace: olap)
       kafka/                    # queue.yaml (Kafka + KafkaNodePool, SCRAM auth + ACLs) + kafka-metrics ConfigMap,
                                 #   topics.yaml (KafkaTopics), users.yaml (KafkaUsers),
+                                #   podmonitor.yaml (broker + kafka-exporter PodMonitors),
                                 #   sasl-users-secret.yaml (SOPS) (namespace: kafka)
       otel/                     # collector.yaml (OTLP -> Kafka producer), collector-clickhouse.yaml +
                                 #   collector-opensearch.yaml (Kafka -> sink ETLs),
+                                #   podmonitor.yaml (collector :8888 PodMonitor),
                                 #   etl-credentials.yaml (SOPS) (namespace: otel)
-      opensearch/               # cluster.yaml (OpenSearchCluster), admin-secret.yaml (SOPS),
+      opensearch/               # cluster.yaml (OpenSearchCluster, monitoring plugin enabled), admin-secret.yaml (SOPS),
                                 #   users.yaml (OpensearchRole/User/RoleBinding),
                                 #   etl-user-secret.yaml (SOPS) (namespace: search)
 ```
@@ -357,8 +371,9 @@ gitops/
 
 ### Operators (Flux-managed)
 
-Unlike the manual flow (which only installs the ClickHouse operator), Flux installs all
-four operators as `HelmRelease` resources:
+Unlike the manual flow (which only installs the ClickHouse operator), Flux installs five
+operator `HelmRelease`s (the `kube-prometheus-stack` release bundles the Prometheus
+operator):
 
 | Operator | Namespace | Helm repo | Chart version | Notes |
 |---|---|---|---|---|
@@ -366,6 +381,7 @@ four operators as `HelmRelease` resources:
 | Strimzi Kafka operator | `kafka` | `https://strimzi.io/charts/` | `1.0.0` | KRaft-only (no ZooKeeper); `watchNamespaces: [kafka]` |
 | OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
 | OpenSearch operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `3.0.2` | Latest operator line (image appVersion `3.0.0-alpha`), targeting OpenSearch 3.x clusters. The chart's validating webhook defaults to a cert-manager-issued cert, so it's disabled via `webhook.enabled: false` (this repo has no cert-manager); the operator still reconciles `OpenSearchCluster` resources without it. |
+| kube-prometheus-stack | `monitoring` | `https://prometheus-community.github.io/helm-charts` | `86.2.3` | Bundles the Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, and kube-state-metrics. Its `ServiceMonitor`/`PodMonitor`/`ScrapeConfig` CRDs back the per-component monitors under `gitops/apps/base/**`. See [Monitoring (Prometheus + Grafana, GitOps)](#monitoring-prometheus--grafana-gitops). |
 
 All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
 Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
@@ -456,6 +472,57 @@ admin/root account:
   `search/opensearch-etl-credentials` Secret and **hashed into the security plugin by the
   operator**, so no password hash is ever committed to Git.
 
+### Monitoring (Prometheus + Grafana, GitOps)
+
+The `monitoring` namespace runs the `kube-prometheus-stack` HelmRelease
+(`gitops/infrastructure/operators/kube-prometheus-stack.yaml`) — the Prometheus operator,
+Prometheus, Alertmanager, Grafana, node-exporter, and kube-state-metrics. Prometheus and
+Grafana are exposed as NodePorts (`30090` / `30300`). The Prometheus operator's monitor
+selectors discover monitors **cluster-wide** regardless of Helm-release label
+(`serviceMonitorSelectorNilUsesHelmValues: false` plus the matching podMonitor / rule /
+probe / scrapeConfig flags), so the per-component monitors under `gitops/apps/base/**` are
+picked up. Because the `apps` Kustomization `dependsOn: infrastructure` with `wait: true`,
+the operator's CRDs exist before those monitors are applied.
+
+Every pipeline component is scraped:
+
+| Component | Mechanism | File | Endpoint |
+|---|---|---|---|
+| Kafka brokers | `PodMonitor` (JMX exporter, enabled via `queue.yaml` `metricsConfig`) | `kafka/podmonitor.yaml` | port `tcp-prometheus` (9404) |
+| Kafka consumer lag | `PodMonitor` for the Kafka Exporter (enabled via `queue.yaml` `spec.kafkaExporter`) | `kafka/podmonitor.yaml` | port `tcp-prometheus` (9404) |
+| ClickHouse server | `ScrapeConfig` | `clickhouse/scrapeconfigs.yaml` | pod IP `:9363` `/metrics` |
+| ClickHouse Keeper | `ScrapeConfig` | `clickhouse/scrapeconfigs.yaml` | pod IP `:7000` `/metrics` |
+| OTel Collectors (×3) | `PodMonitor` (shared operator labels) | `otel/podmonitor.yaml` | port `metrics` (8888) |
+| OpenSearch | operator-generated `ServiceMonitor` (`general.monitoring.enable: true`) | `opensearch/cluster.yaml` | `/_prometheus/metrics` on 9200 |
+
+> ClickHouse's native Prometheus ports (server `9363`, Keeper `7000`) are **not** declared as
+> container ports by the Altinity operator, so a `PodMonitor`'s `targetPort` would be dropped
+> by the Prometheus operator (it keeps only declared container-port numbers). `ScrapeConfig`s
+> are used instead: they discover the pods and rewrite `__address__` to the pod IP plus the
+> real metrics port. OpenSearch's monitoring plugin version must match the engine version
+> exactly; the latest published exporter is `3.6.0.0`, which is why the cluster is pinned to
+> OpenSearch 3.6.0.
+
+#### Grafana data sources
+
+Grafana is provisioned with three data sources so the stored telemetry is queryable
+alongside the infrastructure metrics. Its admin password and the ClickHouse/OpenSearch
+query credentials come from the SOPS-encrypted `monitoring/grafana-credentials` Secret
+(injected as env vars and referenced as `$VARS`, never embedded in plaintext):
+
+| Data source | Plugin | Target | Credentials |
+|---|---|---|---|
+| Prometheus | built-in | in-cluster Prometheus | — (default data source) |
+| ClickHouse | `grafana-clickhouse-datasource` | `clickhouse-house.olap:9000` (native), db `otel` | least-privilege `grafana_reader` user (SELECT on `otel.*`/`system.*` only) |
+| OpenSearch | `grafana-opensearch-datasource` | `https://teeth-search.search:9200`, index pattern `ss4o_*` | admin user (`tlsSkipVerify` for the operator's self-signed cert) |
+
+> The OpenSearch data source's **config-page health check** reports `Index not found: ss4o_*`
+> by design: the plugin (v2.33.1) validates the probe by looking up the literal `database`
+> string as a key in the `_mapping` response, which only ever contains concrete index names,
+> so any wildcard pattern fails the probe. **Queries work normally** (they use `_search`,
+> which expands the wildcard); the broad `ss4o_*` pattern is kept so the data source spans
+> every `ss4o_*` log/trace index rather than a single brittle concrete index.
+
 ### Pinned images
 
 All image tags in the `gitops/` copies are pinned (no `latest` / floating tags). The
@@ -475,8 +542,10 @@ Credentials are never stored in plaintext. Each `Secret` is SOPS-encrypted (only
 `stringData`, per `.sops.yaml`) and Flux decrypts it at apply time.
 
 - `gitops/apps/base/clickhouse/secret.yaml` (`olap/clickhouse-credentials`) — the ClickHouse
-  `test` user password (key `password`) and the ETL `otel_writer` user password (key
-  `otel_writer_password`), referenced by the CR via `*/k8s_secret_password` lookups.
+  `test` user password (key `password`), the ETL `otel_writer` user password (key
+  `otel_writer_password`), and the read-only `grafana_reader` user password (key
+  `grafana_reader_password`, mirrored into `grafana-credentials`), referenced by the CR via
+  `*/k8s_secret_password` lookups.
 - `gitops/apps/base/opensearch/admin-secret.yaml` (`search/teeth-search-admin-password`) —
   the OpenSearch initial admin `username`/`password`.
 - `gitops/apps/base/opensearch/etl-user-secret.yaml` (`search/opensearch-etl-credentials`) —
@@ -487,7 +556,12 @@ Credentials are never stored in plaintext. Each `Secret` is SOPS-encrypted (only
 - `gitops/apps/base/otel/etl-credentials.yaml` (`otel/otel-etl-credentials`) — the
   collector-side copies of the Kafka SCRAM, ClickHouse, and OpenSearch passwords, consumed
   by the three collectors via `spec.env` `secretKeyRef`.
-- Each cluster's `apps.yaml` Flux Kustomization has
+- `gitops/infrastructure/operators/monitoring-credentials.yaml` (`monitoring/grafana-credentials`)
+  — the Grafana admin password plus the ClickHouse (`grafana_reader`) and OpenSearch query
+  credentials used by the provisioned data sources. This Secret lives under
+  `gitops/infrastructure`, so the **`infrastructure.yaml` Flux Kustomization also carries
+  `decryption`** (in addition to `apps.yaml`).
+- Each cluster's `apps.yaml` **and** `infrastructure.yaml` Flux Kustomizations have
   `decryption: { provider: sops, secretRef: { name: sops-age } }`.
 - Edit secrets in place with `sops <file>`; never commit a decrypted `Secret`.
 - One-time per cluster, create the decryption key secret from the gitignored private key:
@@ -563,14 +637,17 @@ flux bootstrap git \
 | OTel Collector | 4318 | 30318 | OTLP HTTP |
 | OTel Collector | 24224 | 30225 | FluentForward |
 | OTel Collector | 13133 | — | Health check (internal) |
+| OTel Collector | 8888 | — | Prometheus metrics (internal) |
 | Vector | 24224 | 30224 | FluentForward |
 | Vector | 9598 | — | Prometheus metrics (internal) |
 | Fluent Bit | 2020 | — | HTTP health/metrics (internal) |
+| ClickHouse server | 9363 | — | Prometheus metrics (internal) |
 | ClickHouse Keeper | 2181 | — | ZooKeeper TCP (internal) |
 | ClickHouse Keeper | 7000 | — | Prometheus metrics (internal) |
 | Kafka | 9092 | — | SASL_PLAINTEXT, SCRAM-SHA-512 (internal) |
 | Kafka | 9093 | — | SASL over TLS, SCRAM-SHA-512 (internal) |
-| OpenSearch | 9200 | — | REST/HTTP API (internal) |
+| Kafka | 9404 | — | JMX Prometheus metrics (internal) |
+| OpenSearch | 9200 | — | REST/HTTP API + `/_prometheus/metrics` (internal) |
 | OpenSearch | 9300 | — | Transport (internal) |
 | Grafana | — | 30300 | NodePort UI |
 | Prometheus | — | 30090 | NodePort UI |

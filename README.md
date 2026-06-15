@@ -2,7 +2,7 @@
 
 ## Deploy with FluxCD (recommended)
 
-Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, OpenSearch) and then reconciles the application custom resources. All environments (**local**, **dev**, **prod**) share one base; per-environment values are supplied by a `cluster-vars` ConfigMap.
+Applications are managed as GitOps under [`gitops/`](gitops/). Flux installs the operators (ClickHouse, Strimzi, OpenTelemetry, OpenSearch, and `kube-prometheus-stack`) and then reconciles the application custom resources. All environments (**local**, **dev**, **prod**) share one base; per-environment values are supplied by a `cluster-vars` ConfigMap.
 
 ```
 gitops/
@@ -53,11 +53,13 @@ flux get helmreleases -A
 
 Credentials are stored encrypted with [SOPS](https://github.com/getsops/sops)
 + [age](https://github.com/FiloSottile/age) — the ClickHouse credentials
-(`gitops/apps/base/clickhouse/secret.yaml`, including the ETL `otel_writer` password), the
+(`gitops/apps/base/clickhouse/secret.yaml`, including the ETL `otel_writer` and read-only
+`grafana_reader` passwords), the
 OpenSearch admin credentials (`gitops/apps/base/opensearch/admin-secret.yaml`) and ETL user
 password (`gitops/apps/base/opensearch/etl-user-secret.yaml`), the Kafka SCRAM user
-passwords (`gitops/apps/base/kafka/sasl-users-secret.yaml`), and the collectors' copies of
-all ETL credentials (`gitops/apps/base/otel/etl-credentials.yaml`).
+passwords (`gitops/apps/base/kafka/sasl-users-secret.yaml`), the collectors' copies of
+all ETL credentials (`gitops/apps/base/otel/etl-credentials.yaml`), and the Grafana admin /
+data-source credentials (`gitops/infrastructure/operators/monitoring-credentials.yaml`).
 The age recipient is in `.sops.yaml`; the private key `.sops/age.key` is gitignored and
 must **not** be committed. Before bootstrapping a cluster, load the key so Flux can
 decrypt:

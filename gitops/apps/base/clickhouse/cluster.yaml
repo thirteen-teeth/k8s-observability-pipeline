@@ -48,7 +48,8 @@ spec:
     settings:
       # Expose the native ClickHouse Prometheus endpoint on every server pod
       # (ClickHouseMetrics_*, ClickHouseProfileEvents_*, ClickHouseAsyncMetrics_*).
-      # Scraped per-replica by the clickhouse-server PodMonitor (targetPort 9363).
+      # Scraped per-replica by the clickhouse-server ScrapeConfig (rewrites
+      # __address__ to pod IP:9363; see scrapeconfigs.yaml).
       # The operator's own metrics-exporter is not used because this repo defines
       # explicit CHI users (no clickhouse_operator user for it to authenticate).
       prometheus/endpoint: "/metrics"
