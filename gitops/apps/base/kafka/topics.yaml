@@ -7,21 +7,23 @@
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
-  name: otlp_logs
+  name: otlp-logs
   namespace: kafka
   labels:
     strimzi.io/cluster: teeth-queue
 spec:
+  topicName: otlp_logs
   partitions: 3
   replicas: 3
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
-  name: otlp_traces
+  name: otlp-traces
   namespace: kafka
   labels:
     strimzi.io/cluster: teeth-queue
 spec:
+  topicName: otlp_traces
   partitions: 3
   replicas: 3
