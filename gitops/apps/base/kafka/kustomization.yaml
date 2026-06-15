@@ -5,3 +5,4 @@ resources:
   - topics.yaml
   - sasl-users-secret.yaml
   - users.yaml
+  - podmonitor.yaml

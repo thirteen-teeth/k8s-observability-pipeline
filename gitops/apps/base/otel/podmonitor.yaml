@@ -1,0 +1,27 @@
+---
+# All three OpenTelemetry Collectors (Kafka producer, ClickHouse consumer,
+# OpenSearch consumer) expose their internal telemetry on the named container
+# port "metrics" (8888), bound to 0.0.0.0 and serving otelcol_* metrics. The
+# operator already adds this port to every collector pod, so a single PodMonitor
+# selecting the shared operator labels scrapes all of them. Discovered
+# cluster-wide because the kube-prometheus-stack HelmRelease sets
+# podMonitorSelectorNilUsesHelmValues: false.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: otel-collectors-monitor
+  namespace: otel
+  labels:
+    app: opentelemetry-collector
+spec:
+  namespaceSelector:
+    matchNames:
+      - otel
+  selector:
+    matchLabels:
+      app.kubernetes.io/managed-by: opentelemetry-operator
+      app.kubernetes.io/component: opentelemetry-collector
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics

@@ -7,3 +7,5 @@ resources:
   - operators/strimzi-operator.yaml
   - operators/otel-operator.yaml
   - operators/opensearch-operator.yaml
+  - operators/kube-prometheus-stack.yaml
+  - operators/monitoring-credentials.yaml

@@ -78,6 +78,12 @@ spec:
   entityOperator:
     topicOperator: {}
     userOperator: {}
+  # Kafka Exporter adds consumer-group lag and per-topic/partition offset metrics
+  # (scraped by the teeth-kafka-exporter-monitor PodMonitor). The broker JMX
+  # exporter above covers broker-internal metrics; this covers consumer lag.
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
 ---
 kind: ConfigMap
 apiVersion: v1

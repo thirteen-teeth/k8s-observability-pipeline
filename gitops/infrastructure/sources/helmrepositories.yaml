@@ -38,3 +38,14 @@ metadata:
 spec:
   interval: 1h
   url: https://opensearch-project.github.io/opensearch-k8s-operator/
+---
+# Prometheus community charts (kube-prometheus-stack: Prometheus operator,
+# Grafana, node-exporter, kube-state-metrics).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://prometheus-community.github.io/helm-charts

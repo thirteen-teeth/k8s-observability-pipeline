@@ -1,0 +1,129 @@
+---
+# kube-prometheus-stack: Prometheus operator + Prometheus + Alertmanager +
+# Grafana + node-exporter + kube-state-metrics. The Prometheus operator's
+# ServiceMonitor/PodMonitor CRDs are what the per-component monitors under
+# gitops/apps/base/**/ target; because the apps Kustomization dependsOn this
+# (infrastructure) Kustomization with wait:true, those CRDs exist before the
+# monitors are applied.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: monitoring
+spec:
+  interval: 30m
+  releaseName: kube-prometheus-stack
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "86.2.3"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    prometheus:
+      # Reachable on the host at :30090 (matches show-nodeports.sh).
+      service:
+        type: NodePort
+        nodePort: 30090
+      prometheusSpec:
+        # Discover every ServiceMonitor/PodMonitor/PrometheusRule in the cluster
+        # regardless of namespace or Helm-release label. Without this the
+        # operator only selects monitors carrying this release's label, so the
+        # pipeline monitors under gitops/apps/base/**/ would be ignored.
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+        scrapeConfigSelectorNilUsesHelmValues: false
+        # Persist the TSDB. storageClassName is omitted so each cluster's default
+        # StorageClass is used (consistent with the ClickHouse/OpenSearch/Kafka
+        # PVCs in this repo).
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 5Gi
+    # node-exporter cannot mount the host root filesystem on rancher-desktop, so
+    # disable that mount (the rest of the node metrics still scrape).
+    prometheus-node-exporter:
+      hostRootFsMount:
+        enabled: false
+    grafana:
+      enabled: true
+      # Reachable on the host at :30300 (matches show-nodeports.sh).
+      service:
+        type: NodePort
+        nodePort: 30300
+      # Admin credentials come from the SOPS-encrypted grafana-credentials Secret
+      # (gitops/infrastructure/operators/monitoring-credentials.yaml), not the
+      # chart default admin/prom-operator.
+      admin:
+        existingSecret: grafana-credentials
+        userKey: admin-user
+        passwordKey: admin-password
+      # Data-source plugins for querying the stored telemetry directly.
+      plugins:
+        - grafana-clickhouse-datasource
+        - grafana-opensearch-datasource
+      # ClickHouse/OpenSearch credentials injected as env vars (from the same
+      # Secret) so the provisioned data sources below can reference them as
+      # $VARS instead of embedding plaintext.
+      envValueFrom:
+        CLICKHOUSE_PASSWORD:
+          secretKeyRef:
+            name: grafana-credentials
+            key: clickhouse-password
+        OPENSEARCH_USER:
+          secretKeyRef:
+            name: grafana-credentials
+            key: opensearch-username
+        OPENSEARCH_PASSWORD:
+          secretKeyRef:
+            name: grafana-credentials
+            key: opensearch-password
+      # The chart auto-provisions Prometheus as the default data source; these
+      # are added alongside it.
+      additionalDataSources:
+        # Query the ClickHouse sink (otel.otel_logs / otel.otel_traces) over the
+        # native protocol with the least-privilege grafana_reader user.
+        - name: ClickHouse
+          type: grafana-clickhouse-datasource
+          access: proxy
+          jsonData:
+            host: clickhouse-house.olap.svc.cluster.local
+            port: 9000
+            protocol: native
+            secure: false
+            username: grafana_reader
+            defaultDatabase: otel
+          secureJsonData:
+            password: $CLICKHOUSE_PASSWORD
+        # Query the OpenSearch sink (ss4o_* indices) over HTTPS (operator-issued
+        # self-signed cert, hence tlsSkipVerify) with the admin user.
+        - name: OpenSearch
+          type: grafana-opensearch-datasource
+          access: proxy
+          url: https://teeth-search.search.svc.cluster.local:9200
+          basicAuth: true
+          basicAuthUser: $OPENSEARCH_USER
+          jsonData:
+            flavor: OpenSearch
+            version: "3.6.0"
+            database: "ss4o_*"
+            timeField: "@timestamp"
+            tlsSkipVerify: true
+            pplEnabled: true
+          secureJsonData:
+            basicAuthPassword: $OPENSEARCH_PASSWORD

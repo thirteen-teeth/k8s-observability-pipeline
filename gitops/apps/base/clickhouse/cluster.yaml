@@ -33,6 +33,30 @@ spec:
         # need the cluster + remote privileges.
         - "GRANT REMOTE ON *.*"
         - "GRANT CLUSTER ON *.*"
+      # Read-only user for the Grafana ClickHouse data source
+      # (kube-prometheus-stack). Can only SELECT the otel sink tables and read
+      # system metadata — no writes, no DDL. Password lives in the same SOPS
+      # secret (key grafana_reader_password) and is mirrored into the
+      # monitoring/grafana-credentials Secret.
+      grafana_reader/k8s_secret_password: olap/clickhouse-credentials/grafana_reader_password
+      grafana_reader/networks/ip:
+        - "0.0.0.0/0"
+      grafana_reader/grants/query:
+        - "GRANT SHOW ON *.*"
+        - "GRANT SELECT ON otel.*"
+        - "GRANT SELECT ON system.*"
+    settings:
+      # Expose the native ClickHouse Prometheus endpoint on every server pod
+      # (ClickHouseMetrics_*, ClickHouseProfileEvents_*, ClickHouseAsyncMetrics_*).
+      # Scraped per-replica by the clickhouse-server PodMonitor (targetPort 9363).
+      # The operator's own metrics-exporter is not used because this repo defines
+      # explicit CHI users (no clickhouse_operator user for it to authenticate).
+      prometheus/endpoint: "/metrics"
+      prometheus/port: "9363"
+      prometheus/metrics: "true"
+      prometheus/events: "true"
+      prometheus/asynchronous_metrics: "true"
+      prometheus/status_info: "true"
     zookeeper:
       # The Altinity ClickHouse Keeper operator publishes a headless Service
       # named "keeper-<chk-name>" (here keeper-chk) that fronts all keeper pods;

@@ -1,0 +1,51 @@
+---
+# Scrapes the Kafka broker JMX-Prometheus metrics (enabled in queue.yaml via
+# metricsConfig: jmxPrometheusExporter). KRaft cluster, so there is no
+# ZooKeeper to scrape. Brokers expose the named port tcp-prometheus (9404);
+# pods are scraped directly (no per-broker Service). The Prometheus operator
+# discovers this PodMonitor cluster-wide because the kube-prometheus-stack
+# HelmRelease sets podMonitorSelectorNilUsesHelmValues: false.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: teeth-kafka-monitor
+  namespace: kafka
+  labels:
+    app: strimzi
+    strimzi.io/cluster: teeth-queue
+spec:
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      interval: 30s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - kafka
+  selector:
+    matchLabels:
+      strimzi.io/cluster: teeth-queue
+      strimzi.io/name: teeth-queue-kafka
+---
+# Scrapes the Kafka Exporter (enabled in queue.yaml via spec.kafkaExporter),
+# which adds consumer-group lag and per-topic offset metrics that the broker
+# JMX exporter does not provide. Same named metrics port (tcp-prometheus/9404).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: teeth-kafka-exporter-monitor
+  namespace: kafka
+  labels:
+    app: strimzi
+    strimzi.io/cluster: teeth-queue
+spec:
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      interval: 30s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - kafka
+  selector:
+    matchLabels:
+      strimzi.io/cluster: teeth-queue
+      strimzi.io/name: teeth-queue-kafka-exporter

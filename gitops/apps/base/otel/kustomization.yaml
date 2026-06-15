@@ -5,3 +5,4 @@ resources:
   - collector.yaml
   - collector-clickhouse.yaml
   - collector-opensearch.yaml
+  - podmonitor.yaml

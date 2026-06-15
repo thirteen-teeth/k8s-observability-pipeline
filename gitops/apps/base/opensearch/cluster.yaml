@@ -11,7 +11,21 @@ metadata:
 spec:
   general:
     serviceName: teeth-search
-    version: "3.7.0"
+    version: "3.6.0"
+    # Expose Prometheus metrics: the operator installs the prometheus-exporter
+    # plugin on each node and auto-creates a ServiceMonitor that scrapes
+    # /_prometheus/metrics over HTTPS using the teeth-search-admin-password
+    # Secret. The plugin version must match the OpenSearch engine version
+    # exactly — the latest published exporter is 3.6.0.0, which is why this
+    # cluster is pinned to OpenSearch 3.6.0 rather than a newer line.
+    monitoring:
+      enable: true
+      scrapeInterval: 30s
+      pluginUrl: "https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.6.0.0/prometheus-exporter-3.6.0.0.zip"
+      # The HTTP layer uses the operator-generated self-signed cert, so the
+      # auto-created ServiceMonitor must skip TLS verification when scraping.
+      tlsConfig:
+        insecureSkipVerify: true
     # The operator runs an init container per pod that sets
     # vm.max_map_count=262144 (setVMMaxMapCount defaults to true), so no
     # host-level sysctl tuning is required for OpenSearch to start.
