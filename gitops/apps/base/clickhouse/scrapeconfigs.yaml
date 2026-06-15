@@ -1,0 +1,74 @@
+---
+# The Altinity operator does NOT declare ClickHouse's native Prometheus port
+# (9363) or Keeper's (7000) as container ports, so a PodMonitor's targetPort is
+# filtered out by the Prometheus operator (it keeps only declared container port
+# numbers) and every target is dropped. A ScrapeConfig sidesteps this: it
+# discovers the pods, keeps one entry per pod, and rewrites __address__ to the
+# pod IP plus the real metrics port. Discovered because the kube-prometheus-stack
+# HelmRelease sets scrapeConfigSelectorNilUsesHelmValues: false.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: clickhouse-server
+  namespace: olap
+  labels:
+    app: clickhouse
+spec:
+  scrapeInterval: 30s
+  metricsPath: /metrics
+  kubernetesSDConfigs:
+    - role: Pod
+      namespaces:
+        names:
+          - olap
+      selectors:
+        - role: Pod
+          label: clickhouse.altinity.com/chi=house
+  relabelings:
+    # role: Pod emits one target per declared container port (9000/8123/9009);
+    # keep a single one so each server pod is scraped exactly once.
+    - sourceLabels: [__meta_kubernetes_pod_container_port_number]
+      regex: "9000"
+      action: keep
+    # Point the scrape at the native Prometheus endpoint (9363).
+    - sourceLabels: [__meta_kubernetes_pod_ip]
+      regex: (.+)
+      replacement: "$1:9363"
+      targetLabel: __address__
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: clickhouse-keeper
+  namespace: olap
+  labels:
+    app: clickhouse-keeper
+spec:
+  scrapeInterval: 30s
+  metricsPath: /metrics
+  kubernetesSDConfigs:
+    - role: Pod
+      namespaces:
+        names:
+          - olap
+      selectors:
+        - role: Pod
+          label: clickhouse-keeper.altinity.com/chk=chk
+  relabelings:
+    # Keeper declares ports 2181 (zk) and 9444 (raft); keep one so each Keeper
+    # pod is scraped once, then rewrite to the native Prometheus endpoint (7000).
+    - sourceLabels: [__meta_kubernetes_pod_container_port_number]
+      regex: "2181"
+      action: keep
+    - sourceLabels: [__meta_kubernetes_pod_ip]
+      regex: (.+)
+      replacement: "$1:7000"
+      targetLabel: __address__
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
