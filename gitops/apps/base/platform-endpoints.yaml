@@ -19,8 +19,10 @@ data:
   # Kafka (Strimzi). Service DNS is "<cluster>-kafka-<role>.<namespace>.svc.cluster.local".
   kafka_cluster_name: "teeth-queue"
   kafka_namespace: "kafka"
-  # ClickHouse Keeper alias Service + namespace, consumed by the ClickHouse CR.
-  keeper_service: "zookeeper"
+  # ClickHouse Keeper Service + namespace, consumed by the ClickHouse CR. This
+  # is the Altinity keeper operator's own headless Service ("keeper-<chk-name>"),
+  # which fronts the keeper ensemble; do not invent a separate alias Service.
+  keeper_service: "keeper-chk"
   olap_namespace: "olap"
   # ClickHouse client Service (Altinity operator names it "clickhouse-<chi>"),
   # consumed by the Kafka -> ClickHouse ETL collector's native-protocol endpoint.

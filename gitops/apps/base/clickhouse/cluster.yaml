@@ -34,12 +34,13 @@ spec:
         - "GRANT REMOTE ON *.*"
         - "GRANT CLUSTER ON *.*"
     zookeeper:
+      # The Altinity ClickHouse Keeper operator publishes a headless Service
+      # named "keeper-<chk-name>" (here keeper-chk) that fronts all keeper pods;
+      # ClickHouse resolves its A records to the full ensemble. The old
+      # per-pod chk-N.<svc> names never resolved (the operator governs the
+      # keeper StatefulSet under keeper-chk, not a hand-made "zookeeper" svc).
       nodes:
-        - host: chk-0.${keeper_service:=zookeeper}.${olap_namespace:=olap}
-          port: 2181
-        - host: chk-1.${keeper_service:=zookeeper}.${olap_namespace:=olap}
-          port: 2181
-        - host: chk-2.${keeper_service:=zookeeper}.${olap_namespace:=olap}
+        - host: ${keeper_service:=keeper-chk}.${olap_namespace:=olap}
           port: 2181
     clusters:
       - name: replicated

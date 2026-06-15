@@ -513,7 +513,8 @@ The `apps` Kustomization substitutes from **two** ConfigMaps, in order:
    namespaces). Consumers compose their connection strings from these vars rather than
    hardcoding DNS, e.g. the OTLP producer targets
    `${kafka_cluster_name}-kafka-brokers.${kafka_namespace}.svc.cluster.local:9092`, the
-   ClickHouse CR points its keeper nodes at `chk-N.${keeper_service}.${olap_namespace}`, and
+   ClickHouse CR points its keeper nodes at the keeper operator's headless Service
+   `${keeper_service}.${olap_namespace}` (`keeper-chk.olap`), and
    the ETL collectors reach their sinks at
    `${clickhouse_service}.${olap_namespace}.svc.cluster.local:9000` and
    `${search_service}.${search_namespace}.svc.cluster.local:9200`.
