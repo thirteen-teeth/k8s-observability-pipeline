@@ -25,6 +25,29 @@ Never commit the age private key (`.sops/age.key`); it is gitignored. If a plain
 is ever committed, treat the value as compromised — rotate it, since encrypting later does
 not remove it from Git history.
 
+## Deploying Is Commit + Push to `main` (GitOps)
+
+This repo is deployed exclusively through **FluxCD GitOps** — there is no manual
+`kubectl apply` deploy step. Flux is bootstrapped per environment against
+`gitops/clusters/<env>` and **reconciles the `main` branch**. The local cluster
+(`rancher-desktop`) tracks `gitops/clusters/local`.
+
+**When asked to deploy, always commit the relevant changes and push to `main`** — do not ask
+which deploy method to use, and do not hand-apply manifests to the cluster (that diverges
+from Flux ownership and bypasses SOPS decryption). After pushing:
+
+- Trigger/observe reconciliation without blocking waits:
+  `flux reconcile kustomization apps --with-source` (or just let it poll), then
+  `kubectl get kustomization -n flux-system` and the per-namespace
+  `kubectl -n <ns> get pods,helmrelease` one-shot polls described below.
+- Flux applies `infrastructure` first, then `apps` once it's healthy; new `Secret`s are
+  SOPS-decrypted by Flux at apply time using the `sops-age` secret.
+- Verify the deploy reached the cluster by checking the Kustomization `Applied revision:`
+  matches the pushed commit SHA, then confirm the affected workloads are Ready.
+
+Only deviate from commit-and-push (e.g. a throwaway local `flux build` / test-apply) if the
+user explicitly asks for a non-`main` or no-git workflow.
+
 ## Watching Long-Running Operations (Don't Block on Waits)
 
 When monitoring rollouts, reconciliations, or pods coming up, **don't use blocking

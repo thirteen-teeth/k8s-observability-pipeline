@@ -1,0 +1,111 @@
+# Kafka -> OpenSearch ETL collector. Consumes the OTLP logs/traces topics off
+# the Strimzi bus (authenticating as the otel-opensearch SCRAM user) and indexes
+# them into OpenSearch over HTTPS as the otel-writer security user.
+#
+# The receiver and processor blocks are intentionally identical to
+# collector-clickhouse.yaml (the operator embeds config inline per collector and
+# cannot include shared snippets across CRs, so the canonical Kafka receiver +
+# processor set is kept in lock-step by convention). Within this collector the
+# single `kafka` receiver and the named processors are reused by both the logs
+# and traces pipelines. Only the exporter, SCRAM identity, and consumer group
+# differ from the ClickHouse collector.
+---
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: my-collector-os
+  namespace: otel
+spec:
+  mode: deployment
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  env:
+    - name: OTEL_LOG_LEVEL
+      value: "debug"
+    # SCRAM password for the otel-opensearch KafkaUser and the OpenSearch
+    # otel-writer password, injected from the SOPS-encrypted otel-etl-credentials
+    # Secret and read in the config below as ${env:...}.
+    - name: KAFKA_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: otel-etl-credentials
+          key: kafka_opensearch_password
+    - name: OPENSEARCH_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: otel-etl-credentials
+          key: opensearch_password
+  config: |
+    receivers:
+      kafka:
+        brokers:
+          - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
+        group_id: otel-opensearch
+        initial_offset: earliest
+        auth:
+          sasl:
+            username: otel-opensearch
+            password: $${env:KAFKA_PASSWORD}
+            mechanism: SCRAM-SHA-512
+        logs:
+          topics: [ otlp_logs ]
+          encoding: otlp_json
+        traces:
+          topics: [ otlp_traces ]
+          encoding: otlp_json
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_mib: 1800
+        spike_limit_mib: 500
+      batch:
+        send_batch_size: 1000
+        timeout: 5s
+    exporters:
+      opensearch:
+        http:
+          endpoint: https://${search_service:=teeth-search}.${search_namespace:=search}.svc.cluster.local:9200
+          auth:
+            authenticator: basicauth/client
+          # The operator issues the cluster a self-signed CA, so skip server
+          # certificate verification for this in-cluster HTTPS hop.
+          tls:
+            insecure_skip_verify: true
+        # ss4o (Simple Schema for Observability) is the default mapping mode and
+        # supports both logs and traces. The exporter writes to the SS4O data
+        # streams (ss4o_logs-{dataset}-{namespace} / ss4o_traces-...), creating
+        # the indices and their field mappings on first ingest.
+        mapping:
+          mode: ss4o
+        dataset: otel
+        timeout: 10s
+        sending_queue:
+          queue_size: 100
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof:
+        endpoint: 0.0.0.0:1777
+      zpages:
+        endpoint: 0.0.0.0:55679
+      # Supplies the OpenSearch basic-auth credentials referenced by the
+      # exporter's auth.authenticator.
+      basicauth/client:
+        client_auth:
+          username: otel-writer
+          password: $${env:OPENSEARCH_PASSWORD}
+    service:
+      extensions: [ pprof, zpages, health_check, basicauth/client ]
+      pipelines:
+        logs:
+          receivers: [ kafka ]
+          processors: [ memory_limiter, batch ]
+          exporters: [ opensearch ]
+        traces:
+          receivers: [ kafka ]
+          processors: [ memory_limiter, batch ]
+          exporters: [ opensearch ]

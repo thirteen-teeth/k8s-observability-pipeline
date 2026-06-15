@@ -36,15 +36,33 @@ spec:
   kafka:
     version: 4.2.0
     metadataVersion: "4.2"
+    # SCRAM-SHA-512 authentication + the built-in "simple" (ACL) authorizer turn
+    # the cluster into an authenticated, least-privilege bus: every client now
+    # authenticates as a KafkaUser (see users.yaml) and may only touch the topics
+    # and consumer groups its ACLs allow. The producer and the per-sink ETL
+    # consumers each get their own credentials. superUsers keeps the Strimzi
+    # entity operators (topic/user operators) able to manage resources.
+    authorization:
+      type: simple
+      superUsers:
+        - CN=teeth-queue-entity-topic-operator
+        - CN=teeth-queue-entity-user-operator
     listeners:
+      # SASL_PLAINTEXT on 9092 — in-cluster traffic only; clients authenticate
+      # with SCRAM-SHA-512 but the payload itself is not TLS-encrypted.
       - name: plain
         port: 9092
         type: internal
         tls: false
+        authentication:
+          type: scram-sha-512
+      # SASL over TLS on 9093 for clients that want encrypted transport.
       - name: tls
         port: 9093
         type: internal
         tls: true
+        authentication:
+          type: scram-sha-512
     config:
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3

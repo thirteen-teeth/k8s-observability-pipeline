@@ -9,7 +9,8 @@ gitops/
   clusters/<env>/        # Flux Kustomizations (infrastructure + apps) + cluster-vars ConfigMap
   infrastructure/        # HelmRepositories + operator HelmReleases + namespaces
   apps/
-    base/                # single source of truth: ClickHouse keeper/cluster, Kafka, OTel collector, OpenSearch
+    base/                # single source of truth: ClickHouse keeper/cluster, Kafka (SCRAM auth + topics/users),
+                         #   OTel collectors (OTLP→Kafka producer + Kafka→ClickHouse/OpenSearch ETLs), OpenSearch
 ```
 
 Environment differences (storage PVC sizes; ClickHouse shard/replica layout; keeper
@@ -52,8 +53,11 @@ flux get helmreleases -A
 
 Credentials are stored encrypted with [SOPS](https://github.com/getsops/sops)
 + [age](https://github.com/FiloSottile/age) — the ClickHouse credentials
-(`gitops/apps/base/clickhouse/secret.yaml`) and the OpenSearch admin credentials
-(`gitops/apps/base/opensearch/admin-secret.yaml`).
+(`gitops/apps/base/clickhouse/secret.yaml`, including the ETL `otel_writer` password), the
+OpenSearch admin credentials (`gitops/apps/base/opensearch/admin-secret.yaml`) and ETL user
+password (`gitops/apps/base/opensearch/etl-user-secret.yaml`), the Kafka SCRAM user
+passwords (`gitops/apps/base/kafka/sasl-users-secret.yaml`), and the collectors' copies of
+all ETL credentials (`gitops/apps/base/otel/etl-credentials.yaml`).
 The age recipient is in `.sops.yaml`; the private key `.sops/age.key` is gitignored and
 must **not** be committed. Before bootstrapping a cluster, load the key so Flux can
 decrypt:

@@ -15,6 +15,24 @@ spec:
         - "GRANT SHOW ON *.*"
         - "GRANT CREATE ON *.* WITH GRANT OPTION"
         - "GRANT SELECT ON system.*"
+      # Least-privilege writer for the Kafka -> ClickHouse ETL collector
+      # (gitops/apps/base/otel/collector-clickhouse.yaml). The clickhouse
+      # exporter runs create_schema, so it needs DDL on the otel database plus
+      # the ON CLUSTER privileges that replicated DDL requires; everything else
+      # is read-only or denied. Password lives in the same SOPS secret.
+      otel_writer/k8s_secret_password: olap/clickhouse-credentials/otel_writer_password
+      otel_writer/networks/ip:
+        - "0.0.0.0/0"
+      otel_writer/grants/query:
+        - "GRANT SHOW ON *.*"
+        - "GRANT SELECT ON system.*"
+        - "GRANT CREATE DATABASE ON otel.*"
+        - "GRANT CREATE TABLE, CREATE VIEW, ALTER, DROP ON otel.*"
+        - "GRANT INSERT, SELECT ON otel.*"
+        # Replicated/distributed DDL (ON CLUSTER) and Distributed-table reads
+        # need the cluster + remote privileges.
+        - "GRANT REMOTE ON *.*"
+        - "GRANT CLUSTER ON *.*"
     zookeeper:
       nodes:
         - host: chk-0.${keeper_service:=zookeeper}.${olap_namespace:=olap}

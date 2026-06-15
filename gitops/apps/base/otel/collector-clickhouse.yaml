@@ -1,0 +1,107 @@
+# Kafka -> ClickHouse ETL collector. Consumes the OTLP logs/traces topics off
+# the Strimzi bus (authenticating as the otel-clickhouse SCRAM user) and writes
+# them into the replicated ClickHouse cluster via the native protocol.
+#
+# Reusable building blocks (shared with collector-opensearch.yaml by keeping the
+# definitions identical, since the operator embeds config inline per collector
+# and cannot include across CRs):
+#   * one `kafka` receiver — the 0.154.0 unified receiver carries per-signal
+#     topic config, so the single definition is reused by both the logs and the
+#     traces pipeline (each pipeline pulls only its own signal's topics).
+#   * one canonical processor set (memory_limiter, batch) defined once and
+#     referenced by both pipelines.
+# Only the exporter (and the SCRAM identity) differs per sink.
+---
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: my-collector-ch
+  namespace: otel
+spec:
+  mode: deployment
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  env:
+    - name: OTEL_LOG_LEVEL
+      value: "debug"
+    # SCRAM password for the otel-clickhouse KafkaUser and the ClickHouse
+    # otel_writer password, injected from the SOPS-encrypted otel-etl-credentials
+    # Secret and read in the config below as ${env:...}.
+    - name: KAFKA_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: otel-etl-credentials
+          key: kafka_clickhouse_password
+    - name: CLICKHOUSE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: otel-etl-credentials
+          key: clickhouse_password
+  config: |
+    receivers:
+      kafka:
+        brokers:
+          - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
+        group_id: otel-clickhouse
+        initial_offset: earliest
+        auth:
+          sasl:
+            username: otel-clickhouse
+            password: $${env:KAFKA_PASSWORD}
+            mechanism: SCRAM-SHA-512
+        logs:
+          topics: [ otlp_logs ]
+          encoding: otlp_json
+        traces:
+          topics: [ otlp_traces ]
+          encoding: otlp_json
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_mib: 1800
+        spike_limit_mib: 500
+      batch:
+        send_batch_size: 1000
+        timeout: 5s
+    exporters:
+      clickhouse:
+        endpoint: tcp://${clickhouse_service:=clickhouse-house}.${olap_namespace:=olap}.svc.cluster.local:9000?dial_timeout=10s&compress=lz4
+        username: otel_writer
+        password: $${env:CLICKHOUSE_PASSWORD}
+        database: otel
+        # create_schema runs the CREATE DATABASE/TABLE DDL on startup. Because
+        # the target is a replicated cluster, cluster_name issues the DDL
+        # ON CLUSTER and table_engine makes the tables ReplicatedMergeTree so
+        # every shard/replica gets its own copy.
+        create_schema: true
+        cluster_name: replicated
+        table_engine:
+          name: ReplicatedMergeTree
+        logs_table_name: otel_logs
+        traces_table_name: otel_traces
+        ttl: 720h
+        timeout: 10s
+        sending_queue:
+          queue_size: 100
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof:
+        endpoint: 0.0.0.0:1777
+      zpages:
+        endpoint: 0.0.0.0:55679
+    service:
+      extensions: [ pprof, zpages, health_check ]
+      pipelines:
+        logs:
+          receivers: [ kafka ]
+          processors: [ memory_limiter, batch ]
+          exporters: [ clickhouse ]
+        traces:
+          receivers: [ kafka ]
+          processors: [ memory_limiter, batch ]
+          exporters: [ clickhouse ]

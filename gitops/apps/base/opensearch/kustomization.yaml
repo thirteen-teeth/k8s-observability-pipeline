@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - admin-secret.yaml
   - cluster.yaml
+  - etl-user-secret.yaml
+  - users.yaml

@@ -1,0 +1,69 @@
+# Declarative least-privilege identity for the Kafka -> OpenSearch ETL collector
+# (gitops/apps/base/otel/collector-opensearch.yaml), provisioned through the
+# OpenSearch operator's security CRDs rather than ad-hoc REST calls. The
+# operator reconciles these into the security plugin's internal_users / roles /
+# roles_mapping, so the otel_writer identity is GitOps-managed and auditable.
+#
+# The role only allows what the opensearch exporter (mapping.mode: ss4o) needs:
+# bootstrap the Simple Schema for Observability index templates, create the
+# backing indices/mappings, and write documents into them — scoped to the
+# ss4o_*/otel-* index families. No access to .opendistro_security, other
+# tenants' indices, or cluster administration.
+---
+apiVersion: opensearch.opster.io/v1
+kind: OpensearchRole
+metadata:
+  name: otel-writer
+  namespace: search
+spec:
+  opensearchCluster:
+    name: teeth-search
+  clusterPermissions:
+    # Bulk ingest + the composite ops the exporter issues.
+    - "cluster_composite_ops"
+    # Health/state lookups the exporter performs on startup.
+    - "cluster_monitor"
+    # Manage the ss4o composable index templates (mapping.mode: ss4o bootstraps
+    # them on first export).
+    - "indices:admin/index_template/get"
+    - "indices:admin/index_template/put"
+  indexPermissions:
+    - indexPatterns:
+        - "ss4o_*"
+        - "otel-*"
+        - "logs-*"
+        - "traces-*"
+      allowedActions:
+        # create_index: make the backing index + put mappings/aliases.
+        - "create_index"
+        # crud: read/write documents (bulk indexing).
+        - "crud"
+        # manage: update mappings/settings on the indices it owns.
+        - "manage"
+---
+apiVersion: opensearch.opster.io/v1
+kind: OpensearchUser
+metadata:
+  name: otel-writer
+  namespace: search
+spec:
+  opensearchCluster:
+    name: teeth-search
+  # Plaintext password read from the SOPS-encrypted Secret; the operator hashes
+  # it into the security plugin (no hash stored in Git).
+  passwordFrom:
+    name: opensearch-etl-credentials
+    key: otel_writer_password
+---
+apiVersion: opensearch.opster.io/v1
+kind: OpensearchUserRoleBinding
+metadata:
+  name: otel-writer
+  namespace: search
+spec:
+  opensearchCluster:
+    name: teeth-search
+  users:
+    - otel-writer
+  roles:
+    - otel-writer

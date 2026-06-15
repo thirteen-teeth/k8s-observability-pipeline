@@ -22,3 +22,10 @@ data:
   # ClickHouse Keeper alias Service + namespace, consumed by the ClickHouse CR.
   keeper_service: "zookeeper"
   olap_namespace: "olap"
+  # ClickHouse client Service (Altinity operator names it "clickhouse-<chi>"),
+  # consumed by the Kafka -> ClickHouse ETL collector's native-protocol endpoint.
+  clickhouse_service: "clickhouse-house"
+  # OpenSearch client Service + namespace, consumed by the Kafka -> OpenSearch
+  # ETL collector's HTTPS exporter endpoint.
+  search_service: "teeth-search"
+  search_namespace: "search"

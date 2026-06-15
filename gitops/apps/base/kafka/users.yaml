@@ -1,0 +1,131 @@
+# KafkaUsers for the OTLP bus. Each client authenticates with SCRAM-SHA-512 and
+# is granted only the ACLs it needs (the Kafka resource enables the "simple"
+# authorizer, so anything not listed here is denied):
+#
+#   otel-producer    — the producing collector (gitops/apps/base/otel/collector.yaml).
+#                      Writes OTLP logs/traces onto the two topics.
+#   otel-clickhouse  — the Kafka -> ClickHouse ETL collector. Reads both topics
+#                      under its own consumer group.
+#   otel-opensearch  — the Kafka -> OpenSearch ETL collector. Reads both topics
+#                      under its own consumer group.
+#
+# Passwords are supplied by us (not auto-generated) from the SOPS-encrypted
+# Secret kafka/kafka-etl-user-passwords so the same values can be mirrored into
+# the collectors' namespace (otel/otel-etl-credentials) for the SASL config.
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: otel-producer
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: teeth-queue
+spec:
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: kafka-etl-user-passwords
+          key: otel-producer
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: otlp_logs
+          patternType: literal
+        operations:
+          - Write
+          - Describe
+      - resource:
+          type: topic
+          name: otlp_traces
+          patternType: literal
+        operations:
+          - Write
+          - Describe
+      # Idempotent producer support (transactional/exactly-once writes) requires
+      # IdempotentWrite on the cluster resource.
+      - resource:
+          type: cluster
+        operations:
+          - IdempotentWrite
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: otel-clickhouse
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: teeth-queue
+spec:
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: kafka-etl-user-passwords
+          key: otel-clickhouse
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: otlp_logs
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+      - resource:
+          type: topic
+          name: otlp_traces
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+      - resource:
+          type: group
+          name: otel-clickhouse
+          patternType: literal
+        operations:
+          - Read
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: otel-opensearch
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: teeth-queue
+spec:
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: kafka-etl-user-passwords
+          key: otel-opensearch
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: otlp_logs
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+      - resource:
+          type: topic
+          name: otlp_traces
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+      - resource:
+          type: group
+          name: otel-opensearch
+          patternType: literal
+        operations:
+          - Read

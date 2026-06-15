@@ -10,6 +10,13 @@ spec:
   env:
   - name: OTEL_LOG_LEVEL
     value: "debug"
+  # SCRAM password for the otel-producer KafkaUser, injected from the
+  # SOPS-encrypted otel-etl-credentials Secret and read below as ${env:...}.
+  - name: KAFKA_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: otel-etl-credentials
+        key: kafka_producer_password
   config: |
     receivers:
       fluentforward:
@@ -41,12 +48,22 @@ spec:
       kafka/logs:
         brokers:
           - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
+        auth:
+          sasl:
+            username: otel-producer
+            password: $${env:KAFKA_PASSWORD}
+            mechanism: SCRAM-SHA-512
         logs:
           encoding: otlp_json
           topic: otlp_logs
       kafka/traces:
         brokers:
           - ${kafka_cluster_name:=teeth-queue}-kafka-brokers.${kafka_namespace:=kafka}.svc.cluster.local:9092
+        auth:
+          sasl:
+            username: otel-producer
+            password: $${env:KAFKA_PASSWORD}
+            mechanism: SCRAM-SHA-512
         traces:
           encoding: otlp_json
           topic: otlp_traces
