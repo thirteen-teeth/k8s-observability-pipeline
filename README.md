@@ -12,8 +12,9 @@ gitops/
     base/                # single source of truth: ClickHouse keeper/cluster, Kafka, OTel collector
 ```
 
-Environment differences (storage PVC sizes; keeper topology-spread policy — relaxed to
-`ScheduleAnyway` for single-node `local`) live in `gitops/clusters/<env>/cluster-vars.yaml`
+Environment differences (storage PVC sizes; ClickHouse shard/replica layout; keeper
+topology-spread policy — relaxed to `ScheduleAnyway` for single-node `local`) live in
+`gitops/clusters/<env>/cluster-vars.yaml`
 and are injected into the base via the `apps` Kustomization's `postBuild.substituteFrom`.
 The base manifests reference them as `${var:=default}`.
 
