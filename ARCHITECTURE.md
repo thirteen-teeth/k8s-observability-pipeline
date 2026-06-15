@@ -338,7 +338,7 @@ four operators as `HelmRelease` resources:
 | Altinity ClickHouse operator | `olap` | `https://docs.altinity.com/clickhouse-operator/` | `0.27.1` | Provides ClickHouse(Keeper)Installation CRDs |
 | Strimzi Kafka operator | `kafka` | `https://strimzi.io/charts/` | `1.0.0` | KRaft-only (no ZooKeeper); `watchNamespaces: [kafka]` |
 | OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
-| OpenSearch (opster) operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `2.8.2` | Latest 2.x line (for OpenSearch 2.x clusters); admission `webhook` disabled to avoid a cert-manager dependency |
+| OpenSearch (opster) operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `2.7.0` | Pinned to the 2.x line for OpenSearch 2.x clusters. 2.8.x is avoided: those charts pass a `--enable-webhooks` flag the pinned `2.8.0` operator image doesn't support (crash loop); 2.7.0 predates it and needs no cert-manager. |
 
 All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
 Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
