@@ -15,6 +15,10 @@ spec:
       logger/console: "true"
       listen_host: "0.0.0.0"
       keeper_server/storage_path: /var/lib/clickhouse-keeper
+      # Raft logs and snapshots go to dedicated volumes (see volumeMounts +
+      # volumeClaimTemplates below) so coordination I/O is isolated from data.
+      keeper_server/log_storage_path: /var/lib/clickhouse-keeper/logs
+      keeper_server/snapshot_storage_path: /var/lib/clickhouse-keeper/snapshots
       keeper_server/tcp_port: "2181"
       keeper_server/four_letter_word_white_list: "*"
       keeper_server/coordination_settings/raft_logs_level: "information"
@@ -44,6 +48,15 @@ spec:
             - name: clickhouse-keeper
               imagePullPolicy: IfNotPresent
               image: "clickhouse/clickhouse-keeper:26.3-alpine"
+              # Mount each volumeClaimTemplate so the operator actually
+              # provisions the PVCs; an unreferenced VCT is never created.
+              volumeMounts:
+                - name: default
+                  mountPath: /var/lib/clickhouse-keeper
+                - name: snapshot-storage-path
+                  mountPath: /var/lib/clickhouse-keeper/snapshots
+                - name: log-storage-path
+                  mountPath: /var/lib/clickhouse-keeper/logs
               resources:
                 requests:
                   memory: "256M"
