@@ -15,6 +15,18 @@ spec:
     # The operator runs an init container per pod that sets
     # vm.max_map_count=262144 (setVMMaxMapCount defaults to true), so no
     # host-level sysctl tuning is required for OpenSearch to start.
+  security:
+    # Let the operator own the security plugin: it generates a self-signed CA
+    # plus transport/HTTP certs, wires them into opensearch.yml, disables the
+    # image's demo-config installer, and switches the readiness/startup probes
+    # to HTTPS. Without this the operator leaves security "disabled" and probes
+    # over plain HTTP, but the stock image still enables TLS on 9200 — so the
+    # probe hits "not an SSL/TLS record" and nodes never become Ready.
+    tls:
+      transport:
+        generate: true
+      http:
+        generate: true
   nodePools:
     # Dedicated cluster-manager (master) nodes. OpenSearch requires at least
     # three master-eligible nodes — single-node clusters are not supported.
