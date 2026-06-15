@@ -41,13 +41,15 @@ spec:
       kafka/logs:
         brokers:
           - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
-        encoding: otlp_json
-        topic: otlp_logs
+        logs:
+          encoding: otlp_json
+          topic: otlp_logs
       kafka/traces:
         brokers:
           - teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092
-        encoding: otlp_json
-        topic: otlp_traces
+        traces:
+          encoding: otlp_json
+          topic: otlp_traces
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
