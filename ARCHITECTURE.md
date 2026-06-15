@@ -8,9 +8,22 @@
 
 This repository defines a full-stack observability pipeline running on Kubernetes. It ingests **logs**, **traces**, and **metrics** from applications and infrastructure, routes them through a message queue, and stores them in a distributed OLAP database. A Prometheus + Grafana stack provides real-time metric visibility.
 
+The repository supports **two deployment paths**: a **legacy manual path** (apply the root
+and `proof-of-concepts/` manifests with `kubectl`/`helm`) and a **GitOps path** (FluxCD
+reconciles the pinned copies under `gitops/`). The GitOps path currently covers only
+ClickHouse, Kafka, and the OTel Collector (plus their operators); Prometheus/Grafana,
+Fluent Bit, and Vector remain manual-only. See [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
+
 ---
 
 ## Components
+
+> **Deployment paths:** The component descriptions and **Install Order** below document the
+> **legacy manual path** — the manifests at the repo root and under `proof-of-concepts/`,
+> applied with `kubectl`/`helm`. The pinned, environment-aware copies under `gitops/` are
+> the **current GitOps path**; their versions and image tags live in the
+> [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section and may intentionally
+> differ from the legacy values here.
 
 ### 1. ClickHouse (OLAP Storage)
 - **Operator**: [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator) — installed via `clickhouse-operator-install.yaml`
@@ -129,7 +142,7 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 ---
 
 ### 6. Prometheus + Grafana (Metrics)
-- **Helm Chart**: `prometheus-community/kube-prometheus-stack` version `79.0.0`
+- **Helm Chart**: `prometheus-community/kube-prometheus-stack` (pinned chart version in the **Install Order** install command below)
 - **Release name**: `my-monitoring`
 - **Namespace**: `monitoring`
 - **Values** (`proof-of-concepts/prometheus/monitoring.yaml`):
@@ -212,17 +225,25 @@ Kafka JMX ───────────────────────�
 
 ## Namespaces
 
-| Namespace | Components |
-|---|---|
-| `olap` | ClickHouse Cluster, ClickHouse Keeper |
-| `kafka` | Strimzi Kafka Cluster (`teeth-queue`) |
-| `otel` | OpenTelemetry Collector (Deployment + DaemonSet) |
-| `logging` | Fluent Bit DaemonSet |
-| `monitoring` | Prometheus, Grafana (kube-prometheus-stack) |
+| Namespace | Components | GitOps-managed? |
+|---|---|---|
+| `olap` | ClickHouse Cluster, ClickHouse Keeper | Yes |
+| `kafka` | Strimzi Kafka Cluster (`teeth-queue`) | Yes |
+| `otel` | OpenTelemetry Collector (Deployment + DaemonSet) | Yes |
+| `logging` | Fluent Bit DaemonSet | No (manual only) |
+| `monitoring` | Prometheus, Grafana (kube-prometheus-stack) | No (manual only) |
+| `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret | GitOps path only |
+
+In the GitOps path, the `olap`, `kafka`, and `otel` namespaces are created by Flux
+(`gitops/infrastructure/namespaces.yaml`); `logging` and `monitoring` are created by their
+manual install steps.
 
 ---
 
 ## Install Order
+
+> This is the **legacy manual path** (repo root + `proof-of-concepts/` manifests). For the
+> pinned, environment-aware GitOps path, see [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
 
 ```bash
 # 1. ClickHouse Operator
@@ -245,6 +266,125 @@ helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack 
   -f proof-of-concepts/prometheus/monitoring.yaml \
   --namespace monitoring \
   --create-namespace
+```
+
+---
+
+## GitOps Deployment (FluxCD)
+
+The pipeline can be deployed declaratively with [FluxCD](https://fluxcd.io/) instead of
+the manual `kubectl apply` steps above. All Flux-managed manifests live under `gitops/`
+and are **curated copies** of the source manifests (the experimental `proof-of-concepts/`
+alternatives are intentionally excluded).
+
+**Scope:** the GitOps path manages the three operators and the ClickHouse, Kafka, and OTel
+Collector workloads only. Prometheus/Grafana (`monitoring`), Fluent Bit (`logging`), and
+Vector are **not** Flux-managed and are still installed via the manual steps above.
+
+### Layout
+
+```
+gitops/
+  clusters/
+    local/ | dev/ | prod/      # per-environment Flux Kustomizations
+      infrastructure.yaml       # Flux Kustomization -> gitops/infrastructure (wait: true)
+      apps.yaml                 # Flux Kustomization -> gitops/apps/overlays/<env> (dependsOn: infrastructure)
+  infrastructure/
+    namespaces.yaml             # olap, kafka, otel
+    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry Helm repos
+    operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator
+  apps/
+    base/
+      clickhouse/               # keeper.yaml, cluster.yaml, secret.yaml (namespace: olap)
+      kafka/                    # queue.yaml (Kafka + KafkaNodePool) + kafka-metrics ConfigMap (namespace: kafka)
+      otel/                     # collector.yaml (namespace: otel)
+    overlays/
+      local/ | dev/ | prod/     # JSON6902 patches for storage + anti-affinity
+```
+
+> Secrets are encrypted at rest with **SOPS + age** (see *Secrets management* below).
+> The age recipient lives in `.sops.yaml`; the private key (`.sops/age.key`) is
+> gitignored and never committed.
+
+### Operators (Flux-managed)
+
+Unlike the manual flow (which only installs the ClickHouse operator), Flux installs all
+three operators as `HelmRelease` resources:
+
+| Operator | Namespace | Helm repo | Chart version | Notes |
+|---|---|---|---|---|
+| Altinity ClickHouse operator | `olap` | `https://docs.altinity.com/clickhouse-operator/` | `0.27.1` | Provides ClickHouse(Keeper)Installation CRDs |
+| Strimzi Kafka operator | `kafka` | `https://strimzi.io/charts/` | `1.0.0` | KRaft-only (no ZooKeeper); `watchNamespaces: [kafka]` |
+| OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
+
+All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
+Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
+so operator CRDs are established before the application CRs are applied.
+
+### Kafka topology (KRaft)
+
+Strimzi `1.0.0` removed ZooKeeper entirely, so the Flux-managed Kafka uses **KRaft**:
+
+- `Kafka` resource (`kafka.strimzi.io/v1`) annotated `strimzi.io/node-pools: enabled` and
+  `strimzi.io/kraft: enabled`; Kafka `4.2.0`, `metadataVersion: "4.2"`.
+- A single dual-role `KafkaNodePool` (`dual-role`, 3 replicas, roles `controller,broker`)
+  owns the JBOD persistent storage (`kraftMetadata: shared`). `spec.kafka.replicas`,
+  `spec.kafka.storage`, and `spec.zookeeper` no longer exist.
+- JMX Prometheus Exporter still scrapes the brokers via the `kafka-metrics` ConfigMap; the
+  former `zookeeper-metrics-config.yml` key was removed.
+
+> Note: the legacy `proof-of-concepts/kafka/queue.yaml` is still the older v1beta2
+> ZooKeeper-based manifest and is **not** Flux-managed.
+
+### Pinned images
+
+All image tags in the `gitops/` copies are pinned (no `latest` / floating tags). The
+manifests are the source of truth — see them rather than a hand-synced list:
+
+- `gitops/apps/base/otel/collector.yaml` — OTel Collector image
+- `gitops/apps/base/clickhouse/cluster.yaml` — ClickHouse server image
+- `gitops/apps/base/clickhouse/keeper.yaml` — ClickHouse Keeper image
+
+These intentionally differ from the legacy manual manifests (which still use `latest` /
+`head-alpine`); see the **Components** section for the legacy values.
+
+### Secrets management (SOPS + age)
+
+ClickHouse credentials are no longer stored in plaintext. The `test` user password now
+comes from a Kubernetes Secret referenced by the CR
+(`test/k8s_secret_password: olap/clickhouse-credentials/password`).
+
+- `gitops/apps/base/clickhouse/secret.yaml` is a SOPS-encrypted `Secret` (only `data` /
+  `stringData` are encrypted, per `.sops.yaml`).
+- Each cluster's `apps.yaml` Flux Kustomization has
+  `decryption: { provider: sops, secretRef: { name: sops-age } }`.
+- One-time per cluster, create the decryption key secret from the gitignored private key:
+  ```bash
+  kubectl create secret generic sops-age \
+    --namespace=flux-system \
+    --from-file=age.agekey=.sops/age.key
+  ```
+
+### Environments & Overrides
+
+Each overlay applies JSON6902 patches over the shared base. Currently overridden per env:
+
+| Setting | local | dev | prod |
+|---|---|---|---|
+| Keeper pod anti-affinity | removed (single-node) | required | required |
+| Keeper PVCs (default/snapshot/log) | 1Gi / 1Gi / 512Mi | 10Gi / 10Gi / 1Gi | 50Gi / 50Gi / 5Gi |
+| ClickHouse PVCs (data/log) | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
+| Kafka node-pool PVC (broker JBOD) | 2Gi | 6Gi | 50Gi |
+
+### Bootstrap
+
+```bash
+# Add your SSH public key as a deploy key with write access in the repo settings first.
+flux bootstrap git \
+  --url=ssh://git@github.com/thirteen-teeth/k8s-observability-pipeline \
+  --branch=main \
+  --path=gitops/clusters/local \   # local | dev | prod
+  --private-key-file=/path/to/identity
 ```
 
 ---

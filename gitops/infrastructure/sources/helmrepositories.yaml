@@ -1,0 +1,30 @@
+---
+# Altinity ClickHouse operator chart
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: altinity-clickhouse-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://docs.altinity.com/clickhouse-operator/
+---
+# Strimzi Kafka operator chart
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: strimzi
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://strimzi.io/charts/
+---
+# OpenTelemetry operator chart
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: open-telemetry
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://open-telemetry.github.io/opentelemetry-helm-charts

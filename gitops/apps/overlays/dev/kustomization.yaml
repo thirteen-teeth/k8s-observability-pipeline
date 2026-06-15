@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  # ClickHouse Keeper: keep anti-affinity, moderate PVCs.
+  - target:
+      kind: ClickHouseKeeperInstallation
+      name: chk
+    patch: |-
+      - op: replace
+        path: /spec/templates/volumeClaimTemplates/0/spec/resources/requests/storage
+        value: 10Gi
+      - op: replace
+        path: /spec/templates/volumeClaimTemplates/1/spec/resources/requests/storage
+        value: 10Gi
+      - op: replace
+        path: /spec/templates/volumeClaimTemplates/2/spec/resources/requests/storage
+        value: 1Gi
+  # ClickHouse cluster: moderate data/log PVCs.
+  - target:
+      kind: ClickHouseInstallation
+      name: house
+    patch: |-
+      - op: replace
+        path: /spec/templates/volumeClaimTemplates/0/spec/resources/requests/storage
+        value: 5Gi
+      - op: replace
+        path: /spec/templates/volumeClaimTemplates/1/spec/resources/requests/storage
+        value: 2Gi
+  # Kafka (KRaft): moderate broker PVC on the dual-role node pool.
+  - target:
+      kind: KafkaNodePool
+      name: dual-role
+    patch: |-
+      - op: replace
+        path: /spec/storage/volumes/0/size
+        value: 6Gi

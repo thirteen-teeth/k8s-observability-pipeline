@@ -1,0 +1,4 @@
+# SOPS / age private key — NEVER commit this. It decrypts all sealed secrets.
+.sops/age.key
+.sops/*.key
+*.agekey

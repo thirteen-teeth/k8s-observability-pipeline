@@ -1,0 +1,29 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: strimzi-kafka-operator
+  namespace: kafka
+spec:
+  interval: 30m
+  releaseName: strimzi-kafka-operator
+  chart:
+    spec:
+      chart: strimzi-kafka-operator
+      version: "1.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: strimzi
+        namespace: flux-system
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # Watch only the kafka namespace where the teeth-queue cluster lives.
+    watchNamespaces:
+      - kafka

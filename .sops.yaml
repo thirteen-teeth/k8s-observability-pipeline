@@ -1,0 +1,8 @@
+# SOPS configuration. Only the data/stringData of Secrets is encrypted so that
+# resource kind/metadata stay diff-able in Git. The age recipient below is the
+# PUBLIC key; the matching PRIVATE key (.sops/age.key) is gitignored and must be
+# loaded into the cluster as the `sops-age` secret in the flux-system namespace.
+creation_rules:
+  - path_regex: gitops/.*\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: age176qtdr0s05kneh5dejm4u849x3ttrlct3ah2775n7vnykyruj4kqwxavxz
