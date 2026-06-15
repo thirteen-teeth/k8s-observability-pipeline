@@ -124,6 +124,12 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
   footprint against ClickHouse** for the same OTel-sourced events.
 - **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + 3 dedicated
   `data` (+ `ingest`) nodes. OpenSearch 3.7.0.
+- **Admin credentials**: OpenSearch 3.x's security plugin enforces a password-strength
+  regex on `OPENSEARCH_INITIAL_ADMIN_PASSWORD`, and the operator's auto-generated value
+  fails it. A compliant secret (`teeth-search-admin-password`, keys `username`/`password`)
+  is therefore committed alongside the cluster, mirroring how the ClickHouse credentials are
+  stored. It is fine for this throwaway benchmark cluster; rotate/seal it before any
+  non-throwaway use.
 - A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
   (OpenSearch 2.10.0) and is **not** part of the legacy install order.
 
