@@ -16,8 +16,6 @@ data:
   # Multi-node cluster: force one keeper replica per node.
   keeper_spread_policy: "DoNotSchedule"
   keeper_data_size: "10Gi"
-  keeper_snapshot_size: "10Gi"
-  keeper_log_size: "1Gi"
   ch_data_size: "5Gi"
   ch_log_size: "2Gi"
   kafka_storage_size: "6Gi"

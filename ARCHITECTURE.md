@@ -384,7 +384,7 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `cluster-vars` key | local | dev | prod |
 |---|---|---|---|
 | `keeper_spread_policy` (keeper topology spread `whenUnsatisfiable`) | `ScheduleAnyway` (single-node) | `DoNotSchedule` | `DoNotSchedule` |
-| `keeper_data_size` / `keeper_snapshot_size` / `keeper_log_size` | 1Gi / 1Gi / 512Mi | 10Gi / 10Gi / 1Gi | 50Gi / 50Gi / 5Gi |
+| `keeper_data_size` (keeper data PVC at `/var/lib/clickhouse-keeper`) | 1Gi | 10Gi | 50Gi |
 | `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
 

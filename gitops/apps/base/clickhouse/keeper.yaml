@@ -5,6 +5,13 @@ metadata:
   name: chk
   namespace: olap
 spec:
+  defaults:
+    templates:
+      # The operator mounts this volumeClaimTemplate at the keeper's fixed
+      # storage path (/var/lib/clickhouse-keeper), which holds the Raft logs
+      # and snapshots. This is the supported way to give keeper persistent
+      # storage; arbitrary named volumeMounts are not materialized for CHK.
+      dataVolumeClaimTemplate: default
   configuration:
     clusters:
       - name: "simple-3"
@@ -15,10 +22,6 @@ spec:
       logger/console: "true"
       listen_host: "0.0.0.0"
       keeper_server/storage_path: /var/lib/clickhouse-keeper
-      # Raft logs and snapshots go to dedicated volumes (see volumeMounts +
-      # volumeClaimTemplates below) so coordination I/O is isolated from data.
-      keeper_server/log_storage_path: /var/lib/clickhouse-keeper/logs
-      keeper_server/snapshot_storage_path: /var/lib/clickhouse-keeper/snapshots
       keeper_server/tcp_port: "2181"
       keeper_server/four_letter_word_white_list: "*"
       keeper_server/coordination_settings/raft_logs_level: "information"
@@ -48,15 +51,6 @@ spec:
             - name: clickhouse-keeper
               imagePullPolicy: IfNotPresent
               image: "clickhouse/clickhouse-keeper:26.3-alpine"
-              # Mount each volumeClaimTemplate so the operator actually
-              # provisions the PVCs; an unreferenced VCT is never created.
-              volumeMounts:
-                - name: default
-                  mountPath: /var/lib/clickhouse-keeper
-                - name: snapshot-storage-path
-                  mountPath: /var/lib/clickhouse-keeper/snapshots
-                - name: log-storage-path
-                  mountPath: /var/lib/clickhouse-keeper/logs
               resources:
                 requests:
                   memory: "256M"
@@ -72,20 +66,6 @@ spec:
           resources:
             requests:
               storage: "${keeper_data_size:=10Gi}"
-      - name: snapshot-storage-path
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: "${keeper_snapshot_size:=10Gi}"
-      - name: log-storage-path
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: "${keeper_log_size:=1Gi}"
 ---
 apiVersion: v1
 kind: Service
