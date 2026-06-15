@@ -130,6 +130,10 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
   is therefore committed alongside the cluster, mirroring how the ClickHouse credentials are
   stored. It is fine for this throwaway benchmark cluster; rotate/seal it before any
   non-throwaway use.
+- **TLS**: `spec.security.tls.{transport,http}.generate: true` lets the operator issue a
+  self-signed CA plus transport/HTTP/admin certs, enable the security plugin, and use HTTPS
+  readiness probes. Without it the operator leaves security disabled and probes nodes over
+  plain HTTP while the image still serves TLS on 9200, so nodes never become Ready.
 - A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
   (OpenSearch 2.10.0) and is **not** part of the legacy install order.
 
