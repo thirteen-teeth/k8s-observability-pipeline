@@ -454,6 +454,11 @@ record, and the producer rejects records larger than ~1,000,000 bytes
 (`MESSAGE_TOO_LARGE`). Without the upper bound an oversized batch is permanently dropped,
 so the cap keeps each `otlp_json` record well under the limit.
 
+The ClickHouse ETL exporter sets `async_insert: false` (the exporter default is `true`).
+Synchronous inserts make each batch a queryable, durable part as soon as the insert
+returns, so events show in ClickHouse within ~10s (5s batch flush + insert) and are not
+lost if a ClickHouse node restarts mid-buffer.
+
 Each collector reads its passwords from pod env (`spec.env` → `secretKeyRef` →
 `otel/otel-etl-credentials`) and references them in the inline config as `$${env:VAR}` — the
 `$$` escapes Flux's postBuild substitution so the literal `${env:VAR}` reaches the collector

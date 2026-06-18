@@ -60,6 +60,8 @@ spec:
         limit_mib: 1800
         spike_limit_mib: 500
       batch:
+        # Cap batch latency so records become visible in ClickHouse within
+        # ~10s of ingestion (5s batch flush + a synchronous insert below).
         send_batch_size: 1000
         timeout: 5s
     exporters:
@@ -78,6 +80,12 @@ spec:
           name: ReplicatedMergeTree
         logs_table_name: otel_logs
         traces_table_name: otel_traces
+        # The exporter defaults async_insert to true, which acknowledges a batch
+        # before it is flushed to a durable part — so rows appear late and are
+        # lost if a ClickHouse node restarts mid-buffer. Force synchronous
+        # inserts: each batch becomes a queryable part as soon as the insert
+        # returns, so events show in ClickHouse within ~10s and survive restarts.
+        async_insert: false
         ttl: 720h
         timeout: 10s
         sending_queue:
