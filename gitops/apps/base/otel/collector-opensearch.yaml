@@ -18,6 +18,16 @@ metadata:
 spec:
   mode: deployment
   image: otel/opentelemetry-collector-contrib:0.154.0
+  # The memory limit sits above the memory_limiter ceiling below (1800 MiB
+  # soft + 500 MiB spike) so the in-collector limiter sheds load before the
+  # kubelet OOM-kills the pod.
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
   env:
     - name: OTEL_LOG_LEVEL
       value: "info"

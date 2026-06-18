@@ -83,6 +83,18 @@ spec:
           containers:
             - name: clickhouse
               image: clickhouse/clickhouse-server:26.3
+              # ClickHouse auto-detects its cgroup memory limit and caps
+              # max_server_memory_usage at ~90% of it, so the limit also bounds
+              # query/insert/merge memory. Keep the request high enough to
+              # schedule and the limit high enough for the benchmark insert+merge
+              # load without OOM-killing the server.
+              resources:
+                requests:
+                  memory: "1Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "2"
               volumeMounts:
                 - name: data-storage-vc-template
                   mountPath: /var/lib/clickhouse

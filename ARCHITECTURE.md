@@ -487,6 +487,31 @@ admin/root account:
   `search/opensearch-etl-credentials` Secret and **hashed into the security plugin by the
   operator**, so no password hash is ever committed to Git.
 
+### Resource requests & limits (GitOps)
+
+Every Flux-managed data-plane workload sets CPU/memory requests and limits so pods get a
+guaranteed share and a hard ceiling (the kubelet OOM-kills/throttles at the limit). Values
+are hardcoded in the manifests (the per-env knobs in `cluster-vars` tune storage/topology
+and OpenSearch memory, not these):
+
+| Workload | File | CPU (req → lim) | Memory (req → lim) | Notes |
+|---|---|---|---|---|
+| ClickHouse server (per pod) | `clickhouse/cluster.yaml` | 500m → 2 | 1Gi → 2Gi | CH caps `max_server_memory_usage` at ~90% of the cgroup limit |
+| ClickHouse Keeper (per pod) | `clickhouse/keeper.yaml` | 1 → 2 | 256M → 4Gi | |
+| Kafka broker (per pod) | `kafka/queue.yaml` | 250m → 1 | 1Gi → 2Gi | JVM heap pinned to **512 MiB** (`jvmOptions -Xms/-Xmx`) so the rest is page cache |
+| Kafka topic/user operators | `kafka/queue.yaml` | 100m → 500m | 256Mi → 512Mi | each `entityOperator` operator |
+| Kafka Exporter | `kafka/queue.yaml` | 50m → 250m | 64Mi → 256Mi | |
+| OTel collectors (×3) | `otel/collector*.yaml` | 100m → 1 | 256Mi → 2Gi | limit sits above the `memory_limiter` ceiling (1800 MiB + 500 MiB spike) |
+| OpenSearch master (per pod) | `opensearch/cluster.yaml` | 250m → 500m | `${opensearch_master_mem}` (req=lim) | operator auto-sizes JVM heap to ~50% of the limit |
+| OpenSearch data (per pod) | `opensearch/cluster.yaml` | 500m → 1 | `${opensearch_data_mem}` (req=lim) | operator auto-sizes JVM heap to ~50% of the limit |
+
+The Kafka broker heap is pinned below Strimzi's default (50% of the memory request, capped
+at 5Gi) because Kafka leans on the OS page cache rather than the JVM heap; 512 MiB is enough
+for this cluster's throughput and leaves the rest of the 2Gi container limit for page cache
+and JVM off-heap. JVM heap units (`512m` = 512 MiB) are powers of two, matching the
+Kubernetes `Mi`/`Gi` units. The operator HelmReleases under
+`gitops/infrastructure/operators/` keep their chart-default resources.
+
 ### Monitoring (Prometheus + Grafana, GitOps)
 
 The `monitoring` namespace runs the `kube-prometheus-stack` HelmRelease

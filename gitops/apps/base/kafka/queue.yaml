@@ -15,6 +15,24 @@ spec:
   roles:
     - controller
     - broker
+  # Pin a small JVM heap instead of Strimzi's default (50% of the memory
+  # request, capped at 5Gi). Kafka relies mostly on the OS page cache rather
+  # than heap, so a 512 MiB heap is enough for this cluster and leaves the rest
+  # of the container's memory for page cache. JVM heap units are powers of two
+  # (m = MiB), distinct from the Kubernetes memory units below.
+  jvmOptions:
+    -Xms: "512m"
+    -Xmx: "512m"
+  # The memory request/limit must hold the 512 MiB heap plus JVM off-heap
+  # (metaspace, threads, direct buffers) and still leave room for the page
+  # cache, so it is set well above the heap size.
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
   storage:
     type: jbod
     volumes:
@@ -76,14 +94,35 @@ spec:
           name: kafka-metrics
           key: kafka-metrics-config.yml
   entityOperator:
-    topicOperator: {}
-    userOperator: {}
+    topicOperator:
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+    userOperator:
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
   # Kafka Exporter adds consumer-group lag and per-topic/partition offset metrics
   # (scraped by the teeth-kafka-exporter-monitor PodMonitor). The broker JMX
   # exporter above covers broker-internal metrics; this covers consumer lag.
   kafkaExporter:
     topicRegex: ".*"
     groupRegex: ".*"
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
 ---
 kind: ConfigMap
 apiVersion: v1
