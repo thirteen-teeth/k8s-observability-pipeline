@@ -30,12 +30,40 @@ spec:
     remediation:
       retries: 3
   values:
+    # The Prometheus operator itself plus the sidecars it injects into the
+    # Prometheus/Alertmanager pods (config-reloaders) ship with no resource
+    # requests/limits by default; set modest control-plane values here.
+    prometheusOperator:
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "50m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+      prometheusConfigReloader:
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
     prometheus:
       # Reachable on the host at :30090 (matches show-nodeports.sh).
       service:
         type: NodePort
         nodePort: 30090
       prometheusSpec:
+        # Prometheus memory scales with active series + retention; this fits the
+        # handful of pipeline targets scraped here with headroom.
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "100m"
+          limits:
+            memory: "1536Mi"
+            cpu: "1"
         # Discover every ServiceMonitor/PodMonitor/PrometheusRule in the cluster
         # regardless of namespace or Helm-release label. Without this the
         # operator only selects monitors carrying this release's label, so the
@@ -55,13 +83,48 @@ spec:
               resources:
                 requests:
                   storage: 5Gi
+    # Alertmanager handles the (currently minimal) alerting path; small limits.
+    alertmanager:
+      alertmanagerSpec:
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+    # kube-state-metrics exports object-state metrics for the whole cluster.
+    kube-state-metrics:
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "25m"
+        limits:
+          memory: "256Mi"
+          cpu: "250m"
     # node-exporter cannot mount the host root filesystem on rancher-desktop, so
     # disable that mount (the rest of the node metrics still scrape).
     prometheus-node-exporter:
       hostRootFsMount:
         enabled: false
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "25m"
+        limits:
+          memory: "64Mi"
+          cpu: "100m"
     grafana:
       enabled: true
+      # Grafana renders the dashboards and proxies the ClickHouse/OpenSearch
+      # data sources; modest limits for a single-user setup.
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "50m"
+        limits:
+          memory: "384Mi"
+          cpu: "500m"
       # Reachable on the host at :30300 (matches show-nodeports.sh).
       service:
         type: NodePort

@@ -497,7 +497,7 @@ and OpenSearch memory, not these):
 | Workload | File | CPU (req → lim) | Memory (req → lim) | Notes |
 |---|---|---|---|---|
 | ClickHouse server (per pod) | `clickhouse/cluster.yaml` | 500m → 2 | 1Gi → 2Gi | CH caps `max_server_memory_usage` at ~90% of the cgroup limit |
-| ClickHouse Keeper (per pod) | `clickhouse/keeper.yaml` | 1 → 2 | 256M → 4Gi | |
+| ClickHouse Keeper (per pod) | `clickhouse/keeper.yaml` | 1 → 2 | 256M → 4Gi | applied only because `spec.defaults.templates.podTemplate` references the pod template (see below) |
 | Kafka broker (per pod) | `kafka/queue.yaml` | 250m → 1 | 1Gi → 2Gi | JVM heap pinned to **512 MiB** (`jvmOptions -Xms/-Xmx`) so the rest is page cache |
 | Kafka topic/user operators | `kafka/queue.yaml` | 100m → 500m | 256Mi → 512Mi | each `entityOperator` operator |
 | Kafka Exporter | `kafka/queue.yaml` | 50m → 250m | 64Mi → 256Mi | |
@@ -509,8 +509,30 @@ The Kafka broker heap is pinned below Strimzi's default (50% of the memory reque
 at 5Gi) because Kafka leans on the OS page cache rather than the JVM heap; 512 MiB is enough
 for this cluster's throughput and leaves the rest of the 2Gi container limit for page cache
 and JVM off-heap. JVM heap units (`512m` = 512 MiB) are powers of two, matching the
-Kubernetes `Mi`/`Gi` units. The operator HelmReleases under
-`gitops/infrastructure/operators/` keep their chart-default resources.
+Kubernetes `Mi`/`Gi` units.
+
+The ClickHouse Keeper pod template only takes effect because
+`spec.defaults.templates.podTemplate: default` references it. The Altinity Keeper operator
+ignores `spec.templates.podTemplates` unless a `defaults.templates.podTemplate` (or a
+per-cluster reference) names it, so without that line the pinned image, topology spread, and
+resource requests/limits silently fall back to the operator defaults (`latest` image, no
+spread, no limits).
+
+The operator control-plane pods set explicit resources too (the strimzi and OpenSearch
+operators already carry their chart defaults and are left as-is):
+
+| Operator | File | Helm values key | CPU (req → lim) | Memory (req → lim) |
+|---|---|---|---|---|
+| ClickHouse operator | `operators/clickhouse-operator.yaml` | `operator.resources` | 50m → 500m | 128Mi → 256Mi |
+| ClickHouse metrics-exporter | `operators/clickhouse-operator.yaml` | `metrics.resources` | 25m → 250m | 64Mi → 128Mi |
+| OTel operator | `operators/otel-operator.yaml` | `manager.resources` | 50m → 500m | 128Mi → 256Mi |
+| Prometheus operator | `operators/kube-prometheus-stack.yaml` | `prometheusOperator.resources` | 50m → 500m | 128Mi → 256Mi |
+| Prometheus config-reloader | `operators/kube-prometheus-stack.yaml` | `prometheusOperator.prometheusConfigReloader.resources` | 25m → 100m | 32Mi → 64Mi |
+| Prometheus | `operators/kube-prometheus-stack.yaml` | `prometheus.prometheusSpec.resources` | 100m → 1 | 512Mi → 1536Mi |
+| Alertmanager | `operators/kube-prometheus-stack.yaml` | `alertmanager.alertmanagerSpec.resources` | 25m → 250m | 64Mi → 128Mi |
+| Grafana | `operators/kube-prometheus-stack.yaml` | `grafana.resources` | 50m → 500m | 128Mi → 384Mi |
+| kube-state-metrics | `operators/kube-prometheus-stack.yaml` | `kube-state-metrics.resources` | 25m → 250m | 64Mi → 256Mi |
+| node-exporter | `operators/kube-prometheus-stack.yaml` | `prometheus-node-exporter.resources` | 25m → 100m | 32Mi → 64Mi |
 
 ### Monitoring (Prometheus + Grafana, GitOps)
 
