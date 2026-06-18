@@ -1,0 +1,3 @@
+# Generated benchmark result files — keep the directory, ignore the outputs.
+*.json
+!.gitkeep

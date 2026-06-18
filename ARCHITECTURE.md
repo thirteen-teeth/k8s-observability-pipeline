@@ -139,11 +139,15 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
   plain HTTP while the image still serves TLS on 9200, so nodes never become Ready.
 - A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
   (OpenSearch 2.10.0) and is **not** part of the legacy install order.
+- **Fed by** the `my-collector-os` ETL collector (Kafka→OpenSearch, `mapping.mode: ss4o`),
+  which writes the same OTLP events to the `ss4o_logs-*` indices that ClickHouse receives —
+  so the two stores hold identical data for a like-for-like disk comparison.
 
-> **Not yet wired:** the OTel Collector does not currently export to OpenSearch — only the
-> cluster is provisioned. Feeding it OTLP data (e.g. a Kafka→OpenSearch collector like the
-> experimental `proof-of-concepts/otel-collector/otel-deployment-opensearch.yaml`) is the
-> remaining step before the disk-usage benchmark can run.
+> **Disk-usage benchmark:** a reproducible harness lives at `tests/storage-benchmark/`. It
+> sends a seeded, size-deterministic OTLP log corpus (default 100 MiB) through the producer
+> collector into Kafka, waits for both sinks to ingest it, compacts them, and reports the
+> on-disk footprint of ClickHouse vs OpenSearch for the same events. See
+> `tests/storage-benchmark/README.md`.
 
 ---
 
