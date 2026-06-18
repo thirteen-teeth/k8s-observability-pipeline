@@ -73,6 +73,20 @@ kubectl create secret generic sops-age \
 To edit a secret, use `SOPS_AGE_KEY_FILE=.sops/age.key sops <path-to-secret>` (e.g.
 `gitops/apps/base/opensearch/admin-secret.yaml`).
 
+### Access Grafana
+
+Grafana is exposed as a NodePort at [http://localhost:30300](http://localhost:30300)
+(Prometheus is at [http://localhost:30090](http://localhost:30090)). The admin login lives
+in the SOPS-encrypted `grafana-credentials` Secret; read it back from the cluster with:
+
+```bash
+kubectl -n monitoring get secret grafana-credentials -o jsonpath='{.data.admin-user}' | base64 -d; echo
+kubectl -n monitoring get secret grafana-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
+
+Grafana comes provisioned with three data sources (Prometheus, ClickHouse, OpenSearch) — see
+`ARCHITECTURE.md` for details.
+
 ### Preview what an environment renders (no cluster needed)
 
 ```bash

@@ -20,7 +20,7 @@ spec:
   image: otel/opentelemetry-collector-contrib:0.154.0
   env:
     - name: OTEL_LOG_LEVEL
-      value: "debug"
+      value: "info"
     # SCRAM password for the otel-opensearch KafkaUser and the OpenSearch
     # otel-writer password, injected from the SOPS-encrypted otel-etl-credentials
     # Secret and read in the config below as ${env:...}.

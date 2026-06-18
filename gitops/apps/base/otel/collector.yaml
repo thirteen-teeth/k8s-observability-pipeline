@@ -9,7 +9,7 @@ spec:
   image: otel/opentelemetry-collector-contrib:0.154.0
   env:
   - name: OTEL_LOG_LEVEL
-    value: "debug"
+    value: "info"
   # SCRAM password for the otel-producer KafkaUser, injected from the
   # SOPS-encrypted otel-etl-credentials Secret and read below as ${env:...}.
   - name: KAFKA_PASSWORD
