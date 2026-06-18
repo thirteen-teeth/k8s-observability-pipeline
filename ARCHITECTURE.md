@@ -448,6 +448,12 @@ blocks are kept identical across the two collectors; only the exporter, SCRAM id
 consumer group differ. The producer `my-collector-kafka` authenticates to Kafka as
 `otel-producer` (SCRAM) via its `kafka/logs` and `kafka/traces` exporters.
 
+The producer's `batch` processor is bounded (`send_batch_size: 800`,
+`send_batch_max_size: 800`): the Kafka exporter marshals each batch into a single Kafka
+record, and the producer rejects records larger than ~1,000,000 bytes
+(`MESSAGE_TOO_LARGE`). Without the upper bound an oversized batch is permanently dropped,
+so the cap keeps each `otlp_json` record well under the limit.
+
 Each collector reads its passwords from pod env (`spec.env` → `secretKeyRef` →
 `otel/otel-etl-credentials`) and references them in the inline config as `$${env:VAR}` — the
 `$$` escapes Flux's postBuild substitution so the literal `${env:VAR}` reaches the collector

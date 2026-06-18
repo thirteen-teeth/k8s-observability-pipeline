@@ -29,7 +29,13 @@ spec:
             endpoint: 0.0.0.0:4318
     processors:
       batch:
-        send_batch_size: 1000
+        # send_batch_max_size hard-caps each emitted batch. The kafka exporter
+        # marshals one batch into a single Kafka record, and the producer
+        # rejects records over ~1,000,000 bytes (MESSAGE_TOO_LARGE) — without an
+        # upper bound a large batch is permanently dropped. At ~700-850 B per
+        # otlp_json log record, 800 records stays well under the limit (~0.6 MB).
+        send_batch_size: 800
+        send_batch_max_size: 800
         timeout: 5s
       memory_limiter:
         check_interval: 2s
