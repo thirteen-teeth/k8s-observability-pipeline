@@ -50,6 +50,22 @@ pip install -r requirements.txt          # once
 `run-benchmark.sh` performs: **reset → port-forward → send → wait-for-ingest →
 compact → measure**, then writes `results/<timestamp>-<label>.json`.
 
+### Large corpora (≥ 1 GiB)
+
+Indexing into the single-shard OpenSearch `ss4o_logs-*` data stream is the slowest
+stage, so a 1 GiB run (~1.5M records) takes longer than the default
+`--ingest-timeout` (900 s) to drain. Give it more time so `wait-ingest.sh` doesn't
+abort before OpenSearch catches up:
+
+```bash
+./run-benchmark.sh --label gigabyte --target-bytes $((1024*1024*1024)) --ingest-timeout 1800
+```
+
+The ETL collectors mark Kafka offsets only after a successful export
+(`message_marking.after: true`), so when OpenSearch falls behind the records stay on
+the topic and are redelivered rather than dropped — the run converges to the full
+count instead of losing ~10% of OpenSearch docs. It just needs enough time.
+
 ### Compare two runs
 
 ```bash

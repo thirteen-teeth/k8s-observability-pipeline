@@ -458,6 +458,16 @@ record, and the producer rejects records larger than ~1,000,000 bytes
 (`MESSAGE_TOO_LARGE`). Without the upper bound an oversized batch is permanently dropped,
 so the cap keeps each `otlp_json` record well under the limit.
 
+Both ETL collectors set `message_marking: { after: true, on_error: false }` on the `kafka`
+receiver. The receiver default commits a partition offset the moment a message is claimed,
+before the pipeline runs — so any downstream drop (the exporter shedding load when its
+`sending_queue` fills, `retry_on_failure` exhausting, or a sink restart) loses
+already-committed records with no redelivery. Marking the offset only after a successful
+export turns that loss into Kafka backpressure and redelivery: under a large backlog (e.g.
+the 1 GiB storage benchmark) records stay on the topic until the sink catches up instead of
+being silently dropped. The OpenSearch exporter additionally carries a larger
+`sending_queue` (`queue_size: 1000`) to absorb indexing bursts before backpressure engages.
+
 The ClickHouse ETL exporter sets `async_insert: false` (the exporter default is `true`).
 Synchronous inserts make each batch a queryable, durable part as soon as the insert
 returns, so events show in ClickHouse within ~10s (5s batch flush + insert) and are not

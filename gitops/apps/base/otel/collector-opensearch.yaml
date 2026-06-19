@@ -56,6 +56,9 @@ spec:
             username: otel-opensearch
             password: $${env:KAFKA_PASSWORD}
             mechanism: SCRAM-SHA-512
+        message_marking:
+          after: true
+          on_error: false
         logs:
           topics: [ otlp_logs ]
           encoding: otlp_json
@@ -89,7 +92,10 @@ spec:
         dataset: otel
         timeout: 10s
         sending_queue:
-          queue_size: 100
+          # Headroom to absorb indexing bursts so the pipeline applies Kafka
+          # backpressure (records stay on the topic and are redelivered) rather
+          # than exhausting retry_on_failure under a large backlog.
+          queue_size: 1000
         retry_on_failure:
           enabled: true
           initial_interval: 5s

@@ -58,6 +58,16 @@ spec:
             username: otel-clickhouse
             password: $${env:KAFKA_PASSWORD}
             mechanism: SCRAM-SHA-512
+        # Commit a partition offset only AFTER the record is successfully
+        # exported (after: true), never on a failed export (on_error: false).
+        # The receiver default marks offsets the moment a message is claimed,
+        # before the pipeline runs — so any exporter drop (sending_queue full,
+        # retry_on_failure exhausted, or a ClickHouse node crash-restart) loses
+        # already-committed records with no redelivery. Marking after a
+        # successful export turns that loss into Kafka backpressure + redelivery.
+        message_marking:
+          after: true
+          on_error: false
         logs:
           topics: [ otlp_logs ]
           encoding: otlp_json
