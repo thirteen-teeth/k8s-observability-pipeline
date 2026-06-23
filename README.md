@@ -87,6 +87,64 @@ kubectl -n monitoring get secret grafana-credentials -o jsonpath='{.data.admin-p
 Grafana comes provisioned with three data sources (Prometheus, ClickHouse, OpenSearch) — see
 `ARCHITECTURE.md` for details.
 
+### Query the stored telemetry (ClickHouse & OpenSearch)
+
+Neither store is exposed outside the cluster, so query them by `exec`-ing into a pod (or
+`kubectl port-forward` if you prefer a local client). Both hold the same OTLP-sourced
+logs and traces written by the ETL collectors.
+
+**ClickHouse** (namespace `olap`) — the ETL writes the `otel` database with tables
+`otel_logs` and `otel_traces` on the `replicated` cluster. Query as the least-privilege
+`otel_writer` user (or read-only `grafana_reader`); passwords live in the SOPS-encrypted
+`clickhouse-credentials` Secret:
+
+```bash
+# Read the otel_writer password and run a query inside a ClickHouse pod
+CH_POD=$(kubectl -n olap get pods -l clickhouse.altinity.com/chi=house \
+  -o jsonpath='{.items[0].metadata.name}')
+CH_PW=$(kubectl -n olap get secret clickhouse-credentials \
+  -o jsonpath='{.data.otel_writer_password}' | base64 -d)
+
+# Cluster-wide count (deduped across shards/replicas)
+kubectl -n olap exec -i "$CH_POD" -c clickhouse -- \
+  clickhouse-client -u otel_writer --password "$CH_PW" \
+  --query "SELECT count() FROM cluster('replicated', otel.otel_logs)"
+
+# Sample recent rows
+kubectl -n olap exec -i "$CH_POD" -c clickhouse -- \
+  clickhouse-client -u otel_writer --password "$CH_PW" \
+  --query "SELECT Timestamp, ServiceName, Body FROM cluster('replicated', otel.otel_logs) ORDER BY Timestamp DESC LIMIT 5 FORMAT Vertical"
+```
+
+> The `otel_logs`/`otel_traces` tables are `ReplicatedMergeTree` and the data is **sharded**
+> across the cluster, so querying the plain `otel.otel_logs` table only sees the rows on the
+> pod you `exec` into (often zero). Wrap the table in `cluster('replicated', otel.<table>)`
+> to read across all shards.
+`teeth-search-admin-password` Secret (the cluster's CA is self-signed, so `curl -k`):
+
+```bash
+# Resolve a master pod and the admin credentials
+OS_POD=$(kubectl -n search get pods -o name | grep -m1 teeth-search-masters | cut -d/ -f2)
+OS_USER=$(kubectl -n search get secret teeth-search-admin-password \
+  -o jsonpath='{.data.username}' | base64 -d)
+OS_PW=$(kubectl -n search get secret teeth-search-admin-password \
+  -o jsonpath='{.data.password}' | base64 -d)
+
+# Document count across the logs indices
+kubectl -n search exec -i "$OS_POD" -c opensearch -- \
+  curl -sk -u "$OS_USER:$OS_PW" "https://localhost:9200/ss4o_logs-*/_count"
+
+# List the concrete indices
+kubectl -n search exec -i "$OS_POD" -c opensearch -- \
+  curl -sk -u "$OS_USER:$OS_PW" "https://localhost:9200/_cat/indices/ss4o_logs-*?v"
+
+# Search recent logs
+kubectl -n search exec -i "$OS_POD" -c opensearch -- \
+  curl -sk -u "$OS_USER:$OS_PW" \
+  "https://localhost:9200/ss4o_logs-*/_search?size=5&sort=time:desc" \
+  -H 'Content-Type: application/json'
+```
+
 ### Preview what an environment renders (no cluster needed)
 
 ```bash
