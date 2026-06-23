@@ -6,123 +6,67 @@
 
 ## Purpose
 
-This repository defines a full-stack observability pipeline running on Kubernetes. It ingests **logs**, **traces**, and **metrics** from applications and infrastructure, routes them through a message queue, and stores them in a distributed OLAP database. A Prometheus + Grafana stack provides real-time metric visibility.
+This repository defines a full-stack observability pipeline running on Kubernetes. It ingests **logs** and **traces** from applications, routes them through a **Kafka** message queue, and fans them out to two storage backends — a distributed **ClickHouse** OLAP cluster and an **OpenSearch** cluster — so their on-disk storage footprint can be benchmarked for the same OTel-sourced events. A Prometheus + Grafana stack provides real-time metric visibility and queries the stored telemetry.
 
-The repository supports **two deployment paths**: a **legacy manual path** (apply the root
-and `proof-of-concepts/` manifests with `kubectl`/`helm`) and a **GitOps path** (FluxCD
-reconciles the pinned copies under `gitops/`). The GitOps path currently covers ClickHouse,
-Kafka, the OTel Collector, OpenSearch, and the Prometheus/Grafana monitoring stack (plus
-their operators); Fluent Bit and Vector remain manual-only. OpenSearch is provisioned to **benchmark its
-on-disk storage footprint against ClickHouse** for the same OTel-sourced events. See
-[GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
+The pipeline is deployed **exclusively through FluxCD GitOps**: every manifest lives under
+`gitops/` and Flux reconciles it per environment (`local`/`dev`/`prod`). There is no manual
+`kubectl apply` path. See [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
 
 ---
 
 ## Components
 
-> **Deployment paths:** The component descriptions and **Install Order** below document the
-> **legacy manual path** — the manifests at the repo root and under `proof-of-concepts/`,
-> applied with `kubectl`/`helm`. The pinned, environment-aware copies under `gitops/` are
-> the **current GitOps path**; their versions and image tags live in the
-> [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section and may intentionally
-> differ from the legacy values here.
+> These are concise per-component overviews. Deployment-level detail — chart and
+> image versions, authentication, Prometheus monitors, and per-environment values —
+> lives in [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
 
-### 1. ClickHouse (OLAP Storage)
-- **Operator**: [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator) — installed via `clickhouse-operator-install.yaml`
+### 1. ClickHouse (OLAP storage)
+- **Operator**: [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator) — Flux-managed `HelmRelease`
 - **Namespace**: `olap`
-- **Cluster** (`clickhouse-cluster.yaml`):
-  - 2 shards × 2 replicas (4 pods total)
-  - Image: `clickhouse/clickhouse-server:23.3.8.21`
-  - Storage: 5Gi data + 2Gi logs per pod via PVCs
-  - User: `test` / `qwerty` with full grants on all IPs
-- **ClickHouse Keeper** (`clickhouse-keeper.yaml`):
-  - ZooKeeper-compatible consensus layer for replication coordination
-  - 3 replicas (`chk-0..2`) in namespace `olap`
-  - DNS alias: `zookeeper.olap.svc` on port `2181`
-  - Prometheus metrics exposed on port `7000` at `/metrics`
-  - Image: `clickhouse/clickhouse-keeper:head-alpine`
+- **Cluster** (`gitops/apps/base/clickhouse/cluster.yaml`): `ClickHouseInstallation` `house`, cluster `replicated`
+  - Topology is per-environment (`ch_shards_count` × `ch_replicas_count`): local 3×1, dev/prod 6×1
+  - Image: `clickhouse/clickhouse-server:26.3`
+  - Storage: per-env data + log PVCs (`ch_data_size` / `ch_log_size`)
+  - Native Prometheus endpoint on port `9363`
+  - Users: `test` (admin), `otel_writer` (least-privilege ETL writer — DDL/DML on the `otel` database only), and read-only `grafana_reader`. Passwords come from the SOPS-encrypted `olap/clickhouse-credentials` Secret.
+- **ClickHouse Keeper** (`gitops/apps/base/clickhouse/keeper.yaml`): `ClickHouseKeeperInstallation` `chk`
+  - Raft consensus layer coordinating replication; 3 replicas
+  - Headless Service `keeper-chk.olap` on port `2181`; Prometheus metrics on port `7000` at `/metrics`
+  - Image: `clickhouse/clickhouse-keeper:26.3-alpine`
 
-#### Schema (`clickhouse-tables/`)
-Two variants are maintained:
+The ETL collector creates the `otel` database and its `otel_logs` / `otel_traces` tables on
+first write (`create_schema: true`, `ReplicatedMergeTree` `ON CLUSTER`) — there is no
+committed SQL schema.
 
-| Directory | Purpose |
-|---|---|
-| `clickhouse-exporter-originals/` | Original single-node schema |
-| `replicated-cluster-sql/` | Replicated schema for the 2-shard/2-replica cluster |
-
-Tables: `logs`, `traces`, `histogram_metrics`, `summary_metrics` — all keyed for OTLP-shaped data.
-
----
-
-### 2. Kafka (Message Queue)
-- **Operator**: [Strimzi](https://strimzi.io/)
+### 2. Kafka (message queue)
+- **Operator**: [Strimzi](https://strimzi.io/) — Flux-managed `HelmRelease` (KRaft-only, no ZooKeeper)
 - **Namespace**: `kafka`
-- **Cluster** (`proof-of-concepts/kafka/queue.yaml`): `teeth-queue`
-  - 3 brokers, Kafka 3.6.0
-  - Internal plaintext listener: `teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092`
-  - Internal TLS listener on port `9093`
-  - Replication factor: 3, min ISR: 2
-  - Storage: 6Gi JBOD per broker
-  - ZooKeeper: 3 replicas, 1Gi storage each
+- **Cluster** (`gitops/apps/base/kafka/queue.yaml`): `teeth-queue`, Kafka `4.2.0`
+  - One dual-role `KafkaNodePool` (`dual-role`, 3 replicas, roles `controller,broker`)
+  - SCRAM-SHA-512 on both listeners (`plain` 9092 / `tls` 9093) plus the built-in `simple` ACL authorizer
+  - Replication factor 3, min ISR 2; JBOD PVC per node (`kafka_storage_size`)
+  - JMX Prometheus exporter on port `9404`; a Kafka Exporter publishes consumer-lag metrics
+- **Topics** (`topics.yaml`): `otlp_logs`, `otlp_traces` (3 partitions, replication 3)
+- **Users** (`users.yaml`): `otel-producer`, `otel-clickhouse`, `otel-opensearch` — see [Kafka authentication & authorization (GitOps)](#kafka-authentication--authorization-gitops)
 
-#### Topics
-| Topic | Producer | Consumer (intended) |
-|---|---|---|
-| `otlp_logs` | OTel Collector | `my-collector-ch` (→ClickHouse) + `my-collector-os` (→OpenSearch) |
-| `otlp_traces` | OTel Collector | `my-collector-ch` (→ClickHouse) + `my-collector-os` (→OpenSearch) |
-| `vector_logs` | Vector | ClickHouse or downstream consumer |
-
-> In the GitOps path `otlp_logs`/`otlp_traces` are declared `KafkaTopic`s and consumed by
-> the two Kafka→sink ETL collectors over SCRAM-authenticated, ACL-scoped connections — see
-> [Kafka → sink ETL collectors (GitOps)](#kafka--sink-etl-collectors-gitops).
-
-#### Metrics
-- JMX Prometheus Exporter enabled on both Kafka brokers and ZooKeeper via `kafka-metrics` ConfigMap
-- Scraped by Prometheus via `queue-service-monitor.yaml`
-
----
-
-### 3. OpenTelemetry Collector
-- **Operator**: [OpenTelemetry Operator](https://github.com/open-telemetry/opentelemetry-operator)
+### 3. OpenTelemetry Collectors
+- **Operator**: [OpenTelemetry Operator](https://github.com/open-telemetry/opentelemetry-operator) — Flux-managed `HelmRelease`
 - **Namespace**: `otel`
-- **Image**: `otel/opentelemetry-collector-contrib:latest`
+- **Image**: `otel/opentelemetry-collector-contrib:0.154.0`
+- Three `OpenTelemetryCollector`s, each reachable in-cluster (ClusterIP) and exposing internal telemetry on port `8888`:
 
-#### Deployment Mode (`otel-deployment-kafka.yaml`) — primary
-Receives signals from applications and ships to Kafka:
+  | Collector | File | Role |
+  |---|---|---|
+  | `my-collector-kafka` | `otel/collector.yaml` | OTLP/FluentForward → Kafka producer. Receivers: `fluentforward` (24224), `otlp` gRPC (4317) / HTTP (4318). Exporters: `kafka/logs` → `otlp_logs`, `kafka/traces` → `otlp_traces`. |
+  | `my-collector-ch` | `otel/collector-clickhouse.yaml` | Kafka → ClickHouse ETL |
+  | `my-collector-os` | `otel/collector-opensearch.yaml` | Kafka → OpenSearch ETL |
 
-| Receiver | Protocol | Port | NodePort |
-|---|---|---|---|
-| `fluentforward` | Fluent protocol | `24224` | `30225` |
-| `otlp` | gRPC | `4317` | `30317` |
-| `otlp` | HTTP | `4318` | `30318` |
-
-NodePort service defined in `otel-nodeport-service.yaml` — supplements the ClusterIP service auto-created by the OTel Operator.
-
-Processors: `batch` (1000/5s), `memory_limiter` (1800MiB), `resourcedetection/system`, `resource` (upserts `service.name`)
-
-Exporters:
-- `kafka/logs` → topic `otlp_logs`
-- `kafka/traces` → topic `otlp_traces`
-
-Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
-
-#### DaemonSet Mode (`otel-daemonset.yaml`) — WIP
-- Collects pod logs directly from `/var/log/pods` on each node
-- Supports CRI-O, containerd, and Docker log formats via regex routing
-- Not yet fully wired to an exporter
-
-#### Other Collector Configs (alternatives/experiments)
-| File | Exporter |
-|---|---|
-| `otel-deployment-datadog.yaml` | Datadog |
-| `otel-deployment-opensearch.yaml` | OpenSearch |
-| `otel-deployment-elasticsearch.yaml` | Elasticsearch |
-| `otel-deployment-small-house.yaml` | ClickHouse (direct) |
+  The two ETL collectors are detailed in [Kafka → sink ETL collectors (GitOps)](#kafka--sink-etl-collectors-gitops).
 
 ---
 
-### 7. OpenSearch (Search Engine — disk-usage benchmark)
-- **Operator**: [OpenSearch Kubernetes Operator](https://github.com/opensearch-project/opensearch-k8s-operator) — **GitOps-managed only** (versions in the [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section)
+### 4. OpenSearch (search engine — disk-usage benchmark)
+- **Operator**: [OpenSearch Kubernetes Operator](https://github.com/opensearch-project/opensearch-k8s-operator) — Flux-managed `HelmRelease` (versions in the [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd) section)
 - **Namespace**: `search`
 - **Purpose**: an alternative document store provisioned to **benchmark on-disk storage
   footprint against ClickHouse** for the same OTel-sourced events.
@@ -137,8 +81,6 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
   self-signed CA plus transport/HTTP/admin certs, enable the security plugin, and use HTTPS
   readiness probes. Without it the operator leaves security disabled and probes nodes over
   plain HTTP while the image still serves TLS on 9200, so nodes never become Ready.
-- A legacy experimental manifest exists at `proof-of-concepts/search/search.yaml`
-  (OpenSearch 2.10.0) and is **not** part of the legacy install order.
 - **Fed by** the `my-collector-os` ETL collector (Kafka→OpenSearch, `mapping.mode: ss4o`),
   which writes the same OTLP events to the `ss4o_logs-*` indices that ClickHouse receives —
   so the two stores hold identical data for a like-for-like disk comparison.
@@ -151,86 +93,16 @@ Extensions: `health_check` (13133), `pprof` (1777), `zpages` (55679)
 
 ---
 
-### 4. Fluent Bit (Node Log Collector)
-- **Mode**: DaemonSet
-- **Namespace**: `logging`
-- **Config** (`fluent-bit-configmap.yaml`):
-  - Input: `tail` on `/var/log/containers/*.log` with Docker parser
-  - Filter: Kubernetes metadata enrichment (`Kube_URL`, CA, token)
-  - Output: `stdout` (JSON lines) — intended to be forwarded to OTel Collector or Vector
-  - HTTP server on port `2020` for health/metrics
-- RBAC: `fluent-bit-account.yml` defines ServiceAccount + ClusterRole
+### 5. Prometheus + Grafana (metrics)
 
----
+> Full configuration is in [Monitoring (Prometheus + Grafana, GitOps)](#monitoring-prometheus--grafana-gitops).
 
-### 5. Vector (Alternative Log Aggregator)
-- **Mode**: Single Pod (not DaemonSet)
-- **Namespace**: varies (applied directly)
-- **Config** (`vector-complete.yaml`):
-  - Source: `fluent` listener on port `24224`
-  - Transform: `remap` — adds `@timestamp`, attempts JSON parse of `.message`
-  - Sinks:
-    - `kafka_sink` → topic `vector_logs` on `teeth-queue-kafka-brokers.kafka.svc.cluster.local:9092`, JSON encoded
-    - `prometheus_exporter` → exposes internal Vector metrics at port `9598`
-  - Service: **NodePort** — FluentForward on port `24224` / nodePort `30224`; metrics on `9598` (ClusterIP only)
-  - ServiceMonitor: `vector-server-monitor` with label `release: my-monitoring` for Prometheus scraping
-
----
-
-### 6. Prometheus + Grafana (Metrics)
-
-> This section describes the **legacy manual path** (`proof-of-concepts/prometheus/monitoring.yaml`
-> + `helm install`). The **GitOps path** now runs its own pinned `kube-prometheus-stack`
-> with full per-component scraping and provisioned data sources — see
-> [Monitoring (Prometheus + Grafana, GitOps)](#monitoring-prometheus--grafana-gitops).
-
-- **Helm Chart**: `prometheus-community/kube-prometheus-stack` (pinned chart version in the **Install Order** install command below)
-- **Release name**: `my-monitoring`
+- **Chart**: `prometheus-community/kube-prometheus-stack` — Flux-managed `HelmRelease`
 - **Namespace**: `monitoring`
-- **Values** (`proof-of-concepts/prometheus/monitoring.yaml`):
-
-```yaml
-grafana:
-  enabled: true
-  service:
-    type: NodePort
-    nodePort: 30300       # Grafana UI accessible at http://localhost:30300
-prometheus:
-  service:
-    type: NodePort
-    nodePort: 30090       # Prometheus UI accessible at http://localhost:30090
-  prometheusSpec:
-    additionalScrapeConfigs:
-      - job_name: windows-host-metrics   # Scrapes metrics from Windows host machine
-        static_configs:
-          - targets:
-              - host.docker.internal:9877
-        metrics_path: /metrics
-        scheme: http
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          storageClassName: hostpath
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 5Gi
-prometheus-node-exporter:
-  hostRootFsMount:
-    enabled: false
-```
-
-**Scrape targets:**
-| Target | Source |
-|---|---|
-| `host.docker.internal:9877/metrics` | Windows host machine (custom exporter) |
-| Vector ServiceMonitor | Vector internal metrics (port 9598) |
-| Kafka PodMonitor | Kafka JMX metrics |
-| ClickHouse Keeper | Internal metrics (port 7000) |
-
-**NodePort exposure:**
-- Prometheus UI: `http://localhost:30090`
-- Grafana UI: `http://localhost:30300`
+- Bundles the Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, and kube-state-metrics.
+- **NodePort exposure**: Prometheus UI at `http://localhost:30090`, Grafana UI at `http://localhost:30300`.
+- The Prometheus operator discovers monitors cluster-wide, so the per-component `PodMonitor`/`ScrapeConfig` resources under `gitops/apps/base/**` scrape every pipeline component.
+- Grafana is provisioned with three data sources — Prometheus, ClickHouse, and OpenSearch — so the stored telemetry is queryable alongside the infrastructure metrics.
 
 ---
 
@@ -239,33 +111,28 @@ prometheus-node-exporter:
 ```
 Applications / Pods
         │
-        ├─── OTLP (gRPC/HTTP) ──────────────────────────────────────►┐
-        │                                                              │
-        └─── FluentForward ──────────► OTel Collector (Deployment) ──►┤
-                                                                       │
-Fluent Bit (DaemonSet) ──► FluentForward ──────────────────────────►  │
-                                                                       ▼
-Vector (Pod) ──► FluentForward ───────────────────────────────► Kafka (SCRAM)
-                        │                                              │
-                        └─ kafka/logs ──────────► topic: otlp_logs    │
-                        └─ kafka/traces ─────────► topic: otlp_traces  │
-                                                                       │
-Vector ─────────────────────────────────────────► topic: vector_logs  │
-                                                                       │
-                  ┌────────────────────────────────────────────────────┤
-                  │ (GitOps ETL collectors consume otlp_logs/otlp_traces)│
-                  ▼                                                      ▼
-        my-collector-ch (ETL)                            my-collector-os (ETL)
-      consumer group otel-clickhouse                   consumer group otel-opensearch
-                  │                                                      │
-                  ▼                                                      ▼
-         ClickHouse Cluster                                    OpenSearch Cluster
-      (shards × replicas, ON-CLUSTER                       (teeth-search, ss4o
-       ReplicatedMergeTree, db otel)                         index mappings)
-      coordinated by CH Keeper
+        ├─── OTLP (gRPC/HTTP) ───────────────►┐
+        └─── FluentForward ──────────────────►┤
+                                               ▼
+                            my-collector-kafka (OTLP producer)
+                                               │  SCRAM (otel-producer)
+                                               ▼
+                              Kafka (teeth-queue, SCRAM + ACLs)
+                            ┌──────────────────┴──────────────────┐
+                            ▼                                      ▼
+                      topic: otlp_logs                     topic: otlp_traces
+                            └──────────────────┬──────────────────┘
+                  ┌─────────────────────────────┴────────────────────────────┐
+                  ▼                                                           ▼
+        my-collector-ch (ETL)                                   my-collector-os (ETL)
+      consumer group otel-clickhouse                          consumer group otel-opensearch
+                  │                                                           │
+                  ▼                                                           ▼
+         ClickHouse Cluster                                        OpenSearch Cluster
+      (replicated, ReplicatedMergeTree                          (teeth-search, ss4o
+       db otel, coordinated by Keeper)                            indices)
 
-Windows Host (:9877) ─────────────────────────────────► Prometheus (:30090)
-Kafka (broker JMX :9404 + Kafka Exporter) ────────────► Prometheus
+Kafka (broker JMX :9404 + Kafka Exporter) ────────────► Prometheus (:30090)
 ClickHouse (server :9363, Keeper :7000) ──────────────► Prometheus
 OpenSearch (:9200 /_prometheus/metrics) ──────────────► Prometheus
 OTel Collectors (:8888) ──────────────────────────────► Prometheus
@@ -279,63 +146,29 @@ node-exporter / kube-state-metrics ───────────────
 
 ## Namespaces
 
-| Namespace | Components | GitOps-managed? |
-|---|---|---|
-| `olap` | ClickHouse Cluster, ClickHouse Keeper | Yes |
-| `kafka` | Strimzi Kafka Cluster (`teeth-queue`) | Yes |
-| `otel` | OpenTelemetry Collectors (OTLP producer + Kafka→ClickHouse/OpenSearch ETLs) + DaemonSet | Yes |
-| `search` | OpenSearch Cluster (`teeth-search`) | Yes |
-| `logging` | Fluent Bit DaemonSet | No (manual only) |
-| `monitoring` | Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics (kube-prometheus-stack) | Yes |
-| `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret | GitOps path only |
+All namespaces are managed by Flux.
 
-In the GitOps path, the `olap`, `kafka`, `otel`, `search`, and `monitoring` namespaces are
-created by Flux (`gitops/infrastructure/namespaces.yaml`); `logging` is created by its
-manual install step.
+| Namespace | Components |
+|---|---|
+| `olap` | ClickHouse Cluster, ClickHouse Keeper |
+| `kafka` | Strimzi Kafka Cluster (`teeth-queue`) |
+| `otel` | OpenTelemetry Collectors (OTLP producer + Kafka→ClickHouse/OpenSearch ETLs) |
+| `search` | OpenSearch Cluster (`teeth-search`) |
+| `monitoring` | Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics (kube-prometheus-stack) |
+| `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret |
 
----
-
-## Install Order
-
-> This is the **legacy manual path** (repo root + `proof-of-concepts/` manifests). For the
-> pinned, environment-aware GitOps path, see [GitOps Deployment (FluxCD)](#gitops-deployment-fluxcd).
-
-```bash
-# 1. ClickHouse Operator
-kubectl create namespace olap
-kubectl apply -f clickhouse-operator-install.yaml
-
-# 2. ClickHouse Keeper + Cluster
-kubectl apply -f clickhouse-keeper.yaml -n olap
-kubectl apply -f clickhouse-cluster.yaml -n olap
-
-# 3. Kafka (requires Strimzi operator pre-installed)
-kubectl apply -f proof-of-concepts/kafka/queue.yaml -n kafka
-
-# 4. OTel Collector (requires OTel Operator pre-installed)
-kubectl apply -f proof-of-concepts/otel-collector/otel-deployment-kafka.yaml -n otel
-
-# 5. Prometheus + Grafana
-helm upgrade --install my-monitoring prometheus-community/kube-prometheus-stack \
-  --version 79.0.0 \
-  -f proof-of-concepts/prometheus/monitoring.yaml \
-  --namespace monitoring \
-  --create-namespace
-```
+The `olap`, `kafka`, `otel`, `search`, and `monitoring` namespaces are created by Flux
+(`gitops/infrastructure/namespaces.yaml`); `flux-system` is created during `flux bootstrap`.
 
 ---
 
 ## GitOps Deployment (FluxCD)
 
-The pipeline can be deployed declaratively with [FluxCD](https://fluxcd.io/) instead of
-the manual `kubectl apply` steps above. All Flux-managed manifests live under `gitops/`
-and are **curated copies** of the source manifests (the experimental `proof-of-concepts/`
-alternatives are intentionally excluded).
+The pipeline is deployed declaratively with [FluxCD](https://fluxcd.io/). All manifests
+live under `gitops/` and are the single source of truth for every environment.
 
-**Scope:** the GitOps path manages the five operator releases and the ClickHouse, Kafka,
-OTel Collector, OpenSearch, and Prometheus/Grafana monitoring workloads. Fluent Bit
-(`logging`) and Vector are **not** Flux-managed and are still installed via the manual
-steps above.
+**Scope:** Flux manages the five operator releases and the ClickHouse, Kafka, OTel
+Collector, OpenSearch, and Prometheus/Grafana monitoring workloads.
 
 ### Layout
 
@@ -375,9 +208,8 @@ gitops/
 
 ### Operators (Flux-managed)
 
-Unlike the manual flow (which only installs the ClickHouse operator), Flux installs five
-operator `HelmRelease`s (the `kube-prometheus-stack` release bundles the Prometheus
-operator):
+Flux installs five operator `HelmRelease`s (the `kube-prometheus-stack` release bundles the
+Prometheus operator):
 
 | Operator | Namespace | Helm repo | Chart version | Notes |
 |---|---|---|---|---|
@@ -403,13 +235,9 @@ Strimzi `1.0.0` removed ZooKeeper entirely, so the Flux-managed Kafka uses **KRa
 - JMX Prometheus Exporter still scrapes the brokers via the `kafka-metrics` ConfigMap; the
   former `zookeeper-metrics-config.yml` key was removed.
 
-> Note: the legacy `proof-of-concepts/kafka/queue.yaml` is still the older v1beta2
-> ZooKeeper-based manifest and is **not** Flux-managed.
-
 ### Kafka authentication & authorization (GitOps)
 
-Unlike the legacy plaintext bus, the Flux-managed Kafka is an authenticated,
-least-privilege bus:
+The Flux-managed Kafka is an authenticated, least-privilege bus:
 
 - **Authentication:** both listeners (`plain` 9092 / `tls` 9093) require
   **SCRAM-SHA-512**. 9092 is `SASL_PLAINTEXT` (in-cluster only, no transport encryption);
@@ -605,9 +433,6 @@ manifests are the source of truth — see them rather than a hand-synced list:
 - `gitops/apps/base/clickhouse/keeper.yaml` — ClickHouse Keeper image
 - `gitops/apps/base/opensearch/cluster.yaml` — OpenSearch version (`general.version`, operator derives the image)
 
-These intentionally differ from the legacy manual manifests (which still use `latest` /
-`head-alpine`); see the **Components** section for the legacy values.
-
 ### Secrets management (SOPS + age)
 
 Credentials are never stored in plaintext. Each `Secret` is SOPS-encrypted (only `data` /
@@ -705,16 +530,13 @@ flux bootstrap git \
 
 | Component | Port | NodePort | Purpose |
 |---|---|---|---|
-| OTel Collector | 4317 | 30317 | OTLP gRPC |
-| OTel Collector | 4318 | 30318 | OTLP HTTP |
-| OTel Collector | 24224 | 30225 | FluentForward |
+| OTel Collector | 4317 | — | OTLP gRPC (ClusterIP) |
+| OTel Collector | 4318 | — | OTLP HTTP (ClusterIP) |
+| OTel Collector | 24224 | — | FluentForward (ClusterIP) |
 | OTel Collector | 13133 | — | Health check (internal) |
 | OTel Collector | 8888 | — | Prometheus metrics (internal) |
-| Vector | 24224 | 30224 | FluentForward |
-| Vector | 9598 | — | Prometheus metrics (internal) |
-| Fluent Bit | 2020 | — | HTTP health/metrics (internal) |
 | ClickHouse server | 9363 | — | Prometheus metrics (internal) |
-| ClickHouse Keeper | 2181 | — | ZooKeeper TCP (internal) |
+| ClickHouse Keeper | 2181 | — | Raft/client TCP (internal) |
 | ClickHouse Keeper | 7000 | — | Prometheus metrics (internal) |
 | Kafka | 9092 | — | SASL_PLAINTEXT, SCRAM-SHA-512 (internal) |
 | Kafka | 9093 | — | SASL over TLS, SCRAM-SHA-512 (internal) |
@@ -723,4 +545,3 @@ flux bootstrap git \
 | OpenSearch | 9300 | — | Transport (internal) |
 | Grafana | — | 30300 | NodePort UI |
 | Prometheus | — | 30090 | NodePort UI |
-| Windows host exporter | 9877 | — | Custom metrics endpoint (host) |
