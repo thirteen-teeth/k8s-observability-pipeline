@@ -1,0 +1,103 @@
+# Layer 1: pre-merge static validation. Runs without a cluster, in seconds, and
+# catches the most common ways a GitOps change breaks before Flux ever sees it:
+#   * yaml-lint      — YAML syntax/structure hygiene
+#   * policy         — repo invariants (no plaintext secrets, pinned images/charts)
+#   * kustomize      — every buildable kustomization still assembles
+#   * kubeconform    — schema-validate the rendered core Kubernetes objects
+#
+# The cluster dirs (gitops/clusters/*) are intentionally NOT `kustomize build`-ed:
+# they have no kustomization.yaml (Flux reads them as raw manifests), so they're
+# covered by yaml-lint + policy instead.
+name: validate
+
+on:
+  pull_request:
+    paths:
+      - "gitops/**"
+      - "tests/policy/**"
+      - ".yamllint.yml"
+      - ".github/workflows/validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "gitops/**"
+      - "tests/policy/**"
+      - ".yamllint.yml"
+      - ".github/workflows/validate.yml"
+
+permissions:
+  contents: read
+
+env:
+  KUSTOMIZE_VERSION: "5.5.0"
+  KUBECONFORM_VERSION: "0.6.7"
+  # Directories that contain a kustomization.yaml and must build cleanly.
+  BUILD_DIRS: "gitops/infrastructure gitops/apps/base"
+
+jobs:
+  yaml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "yamllint==1.35.1"
+      - name: yamllint
+        run: yamllint -c .yamllint.yml gitops/
+
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "pyyaml==6.0.2"
+      - name: Repo-invariant policy checks
+        run: python3 tests/policy/check_manifests.py
+
+  kustomize-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kustomize
+        run: |
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kustomize
+          kustomize version
+      - name: Build kustomizations
+        run: |
+          set -euo pipefail
+          for dir in $BUILD_DIRS; do
+            echo "::group::kustomize build $dir"
+            kustomize build "$dir" > /dev/null
+            echo "ok: $dir"
+            echo "::endgroup::"
+          done
+
+  kubeconform:
+    runs-on: ubuntu-latest
+    needs: kustomize-build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kustomize + kubeconform
+        run: |
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kustomize
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+          kubeconform -v
+      - name: Schema-validate rendered manifests
+        run: |
+          set -euo pipefail
+          # -ignore-missing-schemas: skip operator CRDs (Kafka, ClickHouse, OTel,
+          #   OpenSearch, monitoring.coreos.com) that have no published schema here.
+          # -skip Secret: SOPS-encrypted Secrets carry a `sops:` block and ENC[...]
+          #   values that aren't valid against the core Secret schema.
+          for dir in $BUILD_DIRS; do
+            echo "::group::kubeconform $dir"
+            kustomize build "$dir" \
+              | kubeconform -ignore-missing-schemas -skip Secret -summary
+            echo "::endgroup::"
+          done

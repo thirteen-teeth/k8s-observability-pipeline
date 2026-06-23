@@ -513,6 +513,35 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `opensearch_master_mem` (OpenSearch master memory request=limit; 3 master nodes) | 1Gi | 1Gi | 1Gi |
 | `opensearch_data_mem` (OpenSearch data memory request=limit; 3 data nodes) | 1Gi | 2Gi | 2Gi |
 
+### Validation (CI)
+
+Because Flux reconciles `main` directly, a broken manifest is caught only at reconcile
+time unless it's validated first. The `validate` GitHub Actions workflow
+(`.github/workflows/validate.yml`) runs cluster-free static checks on every pull request
+and on pushes to `main` that touch `gitops/**` (or the validation tooling itself), so the
+most common breakages fail before they merge:
+
+| Job | Tool | What it catches |
+|---|---|---|
+| `yaml-lint` | `yamllint` (config `.yamllint.yml`) | YAML syntax/structure errors |
+| `policy` | `tests/policy/check_manifests.py` | Repo invariants — every `Secret` SOPS-encrypted, no floating/untagged images, pinned HelmRelease chart versions |
+| `kustomize-build` | `kustomize build` | `gitops/infrastructure` and `gitops/apps/base` still assemble |
+| `kubeconform` | `kubeconform` | Schema-validates the rendered core Kubernetes objects |
+
+Notes on scope:
+
+- The cluster directories (`gitops/clusters/*`) have no `kustomization.yaml` (Flux reads
+  them as raw manifests), so they are covered by `yaml-lint` + `policy` rather than
+  `kustomize build`.
+- `kubeconform` runs with `-ignore-missing-schemas` (the operator CRDs — Strimzi, Altinity
+  ClickHouse/Keeper, OTel, OpenSearch, `monitoring.coreos.com` — have no published schema)
+  and `-skip Secret` (SOPS-encrypted `Secret`s carry a `sops:` block and `ENC[...]` values
+  that aren't valid against the core `Secret` schema).
+- The checks operate on the unrendered manifests, so `${var}` substitution tokens are left
+  in place; the policy check ignores `image:` values containing `${`.
+
+The policy check runs standalone too: `python3 tests/policy/check_manifests.py`.
+
 ### Bootstrap
 
 ```bash

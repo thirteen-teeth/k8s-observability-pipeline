@@ -96,3 +96,18 @@ kubectl kustomize gitops/apps/base
 # Resolved for an env (export that env's cluster-vars values first):
 kubectl kustomize gitops/apps/base | flux envsubst
 ```
+
+### Validate changes before they merge
+
+Pull requests (and pushes to `main`) that touch `gitops/**` run the `validate` GitHub
+Actions workflow (`.github/workflows/validate.yml`) — cluster-free static checks that
+catch the most common breakages before Flux reconciles them: `yamllint`, repo-invariant
+policy checks (every `Secret` SOPS-encrypted, images and Helm charts pinned),
+`kustomize build`, and `kubeconform` schema validation. See the **Validation (CI)** section
+in `ARCHITECTURE.md`.
+
+Run the policy checks locally:
+
+```bash
+python3 tests/policy/check_manifests.py
+```

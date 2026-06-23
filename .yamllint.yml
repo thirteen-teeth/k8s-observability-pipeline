@@ -1,0 +1,22 @@
+# yamllint config for the GitOps manifests. Intentionally lenient: these are
+# Kubernetes/Flux manifests (long lines, many comments, ${var} tokens), so only
+# genuine syntax/structure problems should fail CI — not stylistic noise.
+extends: default
+
+rules:
+  # K8s manifests routinely exceed 80 cols (annotations, image refs, URLs).
+  line-length: disable
+  # Resource files don't need a leading `---`.
+  document-start: disable
+  # `enabled: true`, `generate: true`, etc. are values, not keys; don't nag.
+  truthy:
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  indentation:
+    indent-sequences: consistent
+
+ignore: |
+  # Flux-generated; not hand-edited (header says "DO NOT EDIT").
+  gitops/clusters/*/flux-system/gotk-components.yaml
