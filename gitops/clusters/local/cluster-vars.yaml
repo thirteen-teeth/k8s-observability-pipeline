@@ -18,15 +18,20 @@ data:
   keeper_data_size: "1Gi"
   ch_data_size: "1Gi"
   ch_log_size: "512Mi"
-  # ClickHouse cluster topology (shards x replicas).
-  ch_shards_count: "3"
+  # ClickHouse cluster topology (shards x replicas). Local runs 2 shards to
+  # lighten a single-workstation cluster while still exercising sharded fan-out.
+  ch_shards_count: "2"
   ch_replicas_count: "1"
   kafka_storage_size: "2Gi"
-  # OpenSearch data-node PVC size (3 data nodes; disk-usage benchmark vs ClickHouse).
+  # OpenSearch data nodePool size. Local runs 2 data nodes (vs the default 3 in
+  # dev/prod) to lighten a single-workstation cluster while still exercising
+  # multi-data-node shard allocation.
+  opensearch_data_replicas: "2"
+  # OpenSearch data-node PVC size (per data node; disk-usage benchmark vs ClickHouse).
   opensearch_disk_size: "5Gi"
   # Shrink OpenSearch memory requests/limits for a single 16GB workstation
-  # (defaults are 1Gi master / 2Gi data per node, i.e. 9Gi total across the 6
-  # nodes). These bring the cluster down to 3x1Gi + 3x1Gi = 6Gi total.
+  # (defaults are 1Gi master / 2Gi data per node). With 3 master + 2 data nodes
+  # these bring the cluster down to 3x1Gi + 2x1Gi = 5Gi total.
   #
   # 1Gi is the floor: the operator auto-sizes the JVM heap to ~50% of the memory
   # limit, so 512Mi -> -Xmx256M, which is too small for an OpenSearch 3.7 node's

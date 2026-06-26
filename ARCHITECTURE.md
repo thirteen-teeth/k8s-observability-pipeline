@@ -24,7 +24,7 @@ The pipeline is deployed **exclusively through FluxCD GitOps**: every manifest l
 - **Operator**: [Altinity ClickHouse Operator](https://github.com/Altinity/clickhouse-operator) — Flux-managed `HelmRelease`
 - **Namespace**: `olap`
 - **Cluster** (`gitops/apps/base/clickhouse/cluster.yaml`): `ClickHouseInstallation` `house`, cluster `replicated`
-  - Topology is per-environment (`ch_shards_count` × `ch_replicas_count`): local 3×1, dev/prod 6×1
+  - Topology is per-environment (`ch_shards_count` × `ch_replicas_count`): local 2×1, dev/prod 6×1
   - Image: `clickhouse/clickhouse-server:26.3`
   - Storage: per-env data + log PVCs (`ch_data_size` / `ch_log_size`)
   - Native Prometheus endpoint on port `9363`
@@ -70,8 +70,9 @@ committed SQL schema.
 - **Namespace**: `search`
 - **Purpose**: an alternative document store provisioned to **benchmark on-disk storage
   footprint against ClickHouse** for the same OTel-sourced events.
-- **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + 3 dedicated
-  `data` (+ `ingest`) nodes. OpenSearch 3.6.0.
+- **Cluster** (`teeth-search`): 3 dedicated `cluster_manager` (master) nodes + a
+  per-environment number of dedicated `data` (+ `ingest`) nodes (`opensearch_data_replicas`:
+  local 2, dev/prod 3). OpenSearch 3.6.0.
 - **Admin credentials**: OpenSearch 3.x's security plugin enforces a password-strength
   regex on `OPENSEARCH_INITIAL_ADMIN_PASSWORD`, and the operator's auto-generated value
   fails it. A compliant secret (`teeth-search-admin-password`, keys `username`/`password`)
@@ -507,11 +508,12 @@ The `apps` Kustomization also stamps platform labels on every managed resource v
 | `keeper_spread_policy` (keeper topology spread `whenUnsatisfiable`) | `ScheduleAnyway` (single-node) | `DoNotSchedule` | `DoNotSchedule` |
 | `keeper_data_size` (keeper data PVC at `/var/lib/clickhouse-keeper`) | 1Gi | 10Gi | 50Gi |
 | `ch_data_size` / `ch_log_size` | 1Gi / 512Mi | 5Gi / 2Gi | 100Gi / 10Gi |
-| `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 3 / 1 | 6 / 1 | 6 / 1 |
+| `ch_shards_count` / `ch_replicas_count` (ClickHouse layout, total pods = product) | 2 / 1 | 6 / 1 | 6 / 1 |
 | `kafka_storage_size` (node-pool JBOD PVC) | 2Gi | 6Gi | 50Gi |
-| `opensearch_disk_size` (OpenSearch data-node PVC; 3 data nodes) | 5Gi | 10Gi | 100Gi |
+| `opensearch_data_replicas` (OpenSearch data nodePool size) | 2 | 3 | 3 |
+| `opensearch_disk_size` (OpenSearch data-node PVC, per data node) | 5Gi | 10Gi | 100Gi |
 | `opensearch_master_mem` (OpenSearch master memory request=limit; 3 master nodes) | 1Gi | 1Gi | 1Gi |
-| `opensearch_data_mem` (OpenSearch data memory request=limit; 3 data nodes) | 1Gi | 2Gi | 2Gi |
+| `opensearch_data_mem` (OpenSearch data memory request=limit, per data node) | 1Gi | 2Gi | 2Gi |
 
 ### Validation (CI)
 

@@ -56,12 +56,12 @@ spec:
         limits:
           memory: "${opensearch_master_mem:=1Gi}"
           cpu: "500m"
-    # Three dedicated data nodes — where indexed OTLP data (and therefore the
-    # on-disk footprint being benchmarked) lives. Data-node disk size is set
-    # per environment via the cluster-vars ConfigMap (Flux postBuild); the
-    # default matches a small dev-sized node.
+    # Dedicated data nodes — where indexed OTLP data (and therefore the on-disk
+    # footprint being benchmarked) lives. Both the node count and disk size are
+    # set per environment via the cluster-vars ConfigMap (Flux postBuild); the
+    # defaults match a small dev-sized cluster (3 data nodes), and local runs 2.
     - component: data
-      replicas: 3
+      replicas: ${opensearch_data_replicas:=3}
       diskSize: "${opensearch_disk_size:=5Gi}"
       roles:
         - "data"
