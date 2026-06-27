@@ -55,6 +55,11 @@ spec:
         type: NodePort
         nodePort: 30090
       prometheusSpec:
+        # Log every executed PromQL query (engine query log) to the container's
+        # stdout so queries surface in the pod logs (kubectl logs). Pointing the
+        # operator's queryLogFile at /dev/stdout sets Prometheus's
+        # --query.log-file flag to the container stdout stream.
+        queryLogFile: /dev/stdout
         # Prometheus memory scales with active series + retention; this fits the
         # handful of pipeline targets scraped here with headroom.
         resources:

@@ -385,6 +385,11 @@ probe / scrapeConfig flags), so the per-component monitors under `gitops/apps/ba
 picked up. Because the `apps` Kustomization `dependsOn: infrastructure` with `wait: true`,
 the operator's CRDs exist before those monitors are applied.
 
+Prometheus's PromQL query log is enabled and pointed at the container's stdout
+(`prometheusSpec.queryLogFile: /dev/stdout`, which sets Prometheus's `--query.log-file`
+flag), so every executed query is visible in the Prometheus pod logs
+(`kubectl -n monitoring logs prometheus-kube-prometheus-stack-prometheus-0 -c prometheus`).
+
 Every pipeline component is scraped:
 
 | Component | Mechanism | File | Endpoint |
