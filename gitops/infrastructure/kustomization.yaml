@@ -9,3 +9,6 @@ resources:
   - operators/opensearch-operator.yaml
   - operators/kube-prometheus-stack.yaml
   - operators/monitoring-credentials.yaml
+  - operators/prometheus-msteams.yaml
+  - operators/prometheus-msteams-secret.yaml
+  - operators/pipeline-alerts.yaml

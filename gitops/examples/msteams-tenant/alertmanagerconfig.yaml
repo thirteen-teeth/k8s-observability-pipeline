@@ -1,0 +1,42 @@
+# REFERENCE EXAMPLE — NOT reconciled by Flux.
+#
+# This directory lives outside every Flux Kustomization path (the clusters build
+# only ./gitops/infrastructure and ./gitops/apps/base), so nothing here is
+# applied automatically. It shows how a consumer of the shared Alertmanager
+# self-serves routing to the platform's prometheus-msteams renderer.
+#
+# Usage: copy this into your own namespace, change the namespace, tune the
+# matchers/grouping, and `kubectl apply` it. The prometheus-operator discovers
+# AlertmanagerConfig resources in all namespaces (alertmanagerConfigSelector /
+# alertmanagerConfigNamespaceSelector are set to {} on the kube-prometheus-stack
+# HelmRelease) and — with the default OnNamespace matcher strategy — scopes this
+# config to alerts originating in this namespace only, so tenants stay isolated.
+#
+# No webhook URL / Secret is needed here: the Power Automate URL is held only by
+# prometheus-msteams (gitops/infrastructure/operators/prometheus-msteams-secret.yaml).
+# This tenant simply forwards its alerts to the in-cluster renderer Service.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: msteams-tenant-example
+  # Change to your own namespace. Alerts from this namespace are routed here.
+  namespace: my-team
+spec:
+  route:
+    receiver: msteams
+    groupBy: ["namespace", "alertname"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    # Optional: further narrow which of this namespace's alerts go to Teams.
+    # matchers:
+    #   - name: severity
+    #     matchType: "=~"
+    #     value: "critical|warning"
+  receivers:
+    - name: msteams
+      webhookConfigs:
+        # The shared prometheus-msteams "alertmanager" connector. It renders the
+        # Adaptive Card and forwards to the Power Automate webhook it holds.
+        - url: http://prometheus-msteams.monitoring.svc:2000/alertmanager
+          sendResolved: true

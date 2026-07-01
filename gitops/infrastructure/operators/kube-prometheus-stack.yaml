@@ -90,7 +90,51 @@ spec:
                   storage: 5Gi
     # Alertmanager handles the (currently minimal) alerting path; small limits.
     alertmanager:
+      # Global Alertmanager config. Kept intentionally minimal: the default
+      # receiver is the no-op "null" (so nothing is sent globally and the
+      # built-in Watchdog dead-man's-switch is swallowed). Real routing is
+      # self-service — each consumer drops an AlertmanagerConfig in their own
+      # namespace (discovered via alertmanagerConfigSelector below) and routes
+      # to the shared prometheus-msteams renderer. A cluster-wide route to
+      # prometheus-msteams can be added here as an additional child route if a
+      # single default channel is ever wanted.
+      config:
+        route:
+          group_by: ["namespace", "alertname"]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          receiver: "null"
+          routes:
+            - matchers:
+                - 'alertname = "Watchdog"'
+              receiver: "null"
+        receivers:
+          - name: "null"
+        inhibit_rules:
+          - source_matchers:
+              - 'severity = "critical"'
+            target_matchers:
+              - 'severity =~ "warning|info"'
+            equal: ["namespace", "alertname"]
+          - source_matchers:
+              - 'severity = "warning"'
+            target_matchers:
+              - 'severity = "info"'
+            equal: ["namespace", "alertname"]
+          - source_matchers:
+              - 'alertname = "InfoInhibitor"'
+            target_matchers:
+              - 'severity = "info"'
+            equal: ["namespace"]
       alertmanagerSpec:
+        # Make Alertmanager a shared, multi-tenant service: discover
+        # AlertmanagerConfig resources in every namespace (empty selectors match
+        # all), so consumers self-serve routing without editing this HelmRelease.
+        # The default OnNamespace matcher strategy scopes each tenant's config to
+        # its own namespace, so tenants can't intercept each other's alerts.
+        alertmanagerConfigSelector: {}
+        alertmanagerConfigNamespaceSelector: {}
         resources:
           requests:
             memory: "64Mi"

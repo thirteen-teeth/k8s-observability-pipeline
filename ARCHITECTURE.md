@@ -104,6 +104,7 @@ committed SQL schema.
 - **NodePort exposure**: Prometheus UI at `http://localhost:30090`, Grafana UI at `http://localhost:30300`.
 - The Prometheus operator discovers monitors cluster-wide, so the per-component `PodMonitor`/`ScrapeConfig` resources under `gitops/apps/base/**` scrape every pipeline component.
 - Grafana is provisioned with three data sources — Prometheus, ClickHouse, and OpenSearch — so the stored telemetry is queryable alongside the infrastructure metrics.
+- Alerting is self-service: Alertmanager discovers `AlertmanagerConfig` resources cluster-wide, and a `prometheus-msteams` renderer delivers alerts to Microsoft Teams via a Power Automate webhook as a custom Adaptive Card. See [Alerting (Alertmanager → Microsoft Teams)](#alerting-alertmanager--microsoft-teams).
 
 ---
 
@@ -155,7 +156,7 @@ All namespaces are managed by Flux.
 | `kafka` | Strimzi Kafka Cluster (`teeth-queue`) |
 | `otel` | OpenTelemetry Collectors (OTLP producer + Kafka→ClickHouse/OpenSearch ETLs) |
 | `search` | OpenSearch Cluster (`teeth-search`) |
-| `monitoring` | Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics (kube-prometheus-stack) |
+| `monitoring` | Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics (kube-prometheus-stack), prometheus-msteams (Teams alert renderer) |
 | `flux-system` | Flux controllers, HelmRepository sources, `sops-age` decryption secret |
 
 The `olap`, `kafka`, `otel`, `search`, and `monitoring` namespaces are created by Flux
@@ -182,9 +183,11 @@ gitops/
       cluster-vars.yaml         # ConfigMap of per-env values (postBuild substituteFrom)
   infrastructure/
     namespaces.yaml             # olap, kafka, otel, search, monitoring
-    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry, OpenSearch, prometheus-community Helm repos
+    sources/helmrepositories.yaml   # Altinity, Strimzi, OpenTelemetry, OpenSearch, prometheus-community, prometheus-msteams Helm repos
     operators/                  # HelmReleases: clickhouse-operator, strimzi, otel-operator, opensearch-operator,
-                                #   kube-prometheus-stack + monitoring-credentials.yaml (SOPS Grafana/datasource creds)
+                                #   kube-prometheus-stack + monitoring-credentials.yaml (SOPS Grafana/datasource creds),
+                                #   prometheus-msteams + prometheus-msteams-secret.yaml (SOPS Teams webhook),
+                                #   pipeline-alerts.yaml (example PrometheusRules)
   apps/
     base/                       # single source of truth for all envs (no overlays)
       platform-endpoints.yaml   # ConfigMap of shared cross-app names/namespaces (postBuild substituteFrom)
@@ -201,6 +204,8 @@ gitops/
       opensearch/               # cluster.yaml (OpenSearchCluster, monitoring plugin enabled), admin-secret.yaml (SOPS),
                                 #   users.yaml (OpensearchRole/User/RoleBinding),
                                 #   etl-user-secret.yaml (SOPS) (namespace: search)
+  examples/                     # REFERENCE ONLY — outside every Flux Kustomization path, never reconciled
+    msteams-tenant/             # alertmanagerconfig.yaml: sample tenant routing alerts to prometheus-msteams
 ```
 
 > Secrets are encrypted at rest with **SOPS + age** (see *Secrets management* below).
@@ -210,7 +215,7 @@ gitops/
 ### Operators (Flux-managed)
 
 Flux installs five operator `HelmRelease`s (the `kube-prometheus-stack` release bundles the
-Prometheus operator):
+Prometheus operator), plus the `prometheus-msteams` alert renderer:
 
 | Operator | Namespace | Helm repo | Chart version | Notes |
 |---|---|---|---|---|
@@ -219,6 +224,7 @@ Prometheus operator):
 | OpenTelemetry operator | `otel` | `https://open-telemetry.github.io/opentelemetry-helm-charts` | `0.115.0` | `autoGenerateCert` enabled (no cert-manager dependency) |
 | OpenSearch operator | `search` | `https://opensearch-project.github.io/opensearch-k8s-operator/` | `3.0.2` | Latest operator line (image appVersion `3.0.0-alpha`), targeting OpenSearch 3.x clusters. The chart's validating webhook defaults to a cert-manager-issued cert, so it's disabled via `webhook.enabled: false` (this repo has no cert-manager); the operator still reconciles `OpenSearchCluster` resources without it. |
 | kube-prometheus-stack | `monitoring` | `https://prometheus-community.github.io/helm-charts` | `86.2.3` | Bundles the Prometheus operator, Prometheus, Alertmanager, Grafana, node-exporter, and kube-state-metrics. Its `ServiceMonitor`/`PodMonitor`/`ScrapeConfig` CRDs back the per-component monitors under `gitops/apps/base/**`. See [Monitoring (Prometheus + Grafana, GitOps)](#monitoring-prometheus--grafana-gitops). |
+| prometheus-msteams | `monitoring` | `https://prometheus-msteams.github.io/prometheus-msteams/` | `1.3.6` | Not an operator — the off-the-shelf renderer that turns Alertmanager webhooks into a custom Adaptive Card and POSTs it to a Microsoft Teams Power Automate webhook (`workflowWebhook: true`). See [Alerting (Alertmanager → Microsoft Teams)](#alerting-alertmanager--microsoft-teams). |
 
 All chart versions are **pinned** (no floating ranges) so Flux reconciles deterministically.
 Reconciliation order is enforced by `apps` `dependsOn: infrastructure` plus `wait: true`,
@@ -372,6 +378,7 @@ operators already carry their chart defaults and are left as-is):
 | Grafana | `operators/kube-prometheus-stack.yaml` | `grafana.resources` | 50m → 500m | 128Mi → 384Mi |
 | kube-state-metrics | `operators/kube-prometheus-stack.yaml` | `kube-state-metrics.resources` | 25m → 250m | 64Mi → 256Mi |
 | node-exporter | `operators/kube-prometheus-stack.yaml` | `prometheus-node-exporter.resources` | 25m → 100m | 32Mi → 64Mi |
+| prometheus-msteams | `operators/prometheus-msteams.yaml` | `resources` | 10m → 100m | 32Mi → 64Mi |
 
 ### Monitoring (Prometheus + Grafana, GitOps)
 
@@ -428,6 +435,54 @@ query credentials come from the SOPS-encrypted `monitoring/grafana-credentials` 
 > so any wildcard pattern fails the probe. **Queries work normally** (they use `_search`,
 > which expands the wildcard); the broad `ss4o_*` pattern is kept so the data source spans
 > every `ss4o_*` log/trace index rather than a single brittle concrete index.
+
+#### Alerting (Alertmanager → Microsoft Teams)
+
+Alerts flow from `PrometheusRule`s through Alertmanager to a Microsoft Teams channel, rendered
+as a **custom Adaptive Card** by [`prometheus-msteams`](https://github.com/prometheus-msteams/prometheus-msteams)
+and delivered through a **Power Automate** ("Workflows") webhook:
+
+```
+PrometheusRule → Alertmanager --webhook_configs--> prometheus-msteams (renders Adaptive Card)
+              --HTTPS--> Power Automate Workflow --> Teams channel
+```
+
+- **Alertmanager as a shared, multi-tenant service.** The `kube-prometheus-stack` HelmRelease
+  keeps a minimal global config (default no-op `null` receiver; the built-in `Watchdog` is
+  routed to `null`) and enables cluster-wide self-service via
+  `alertmanager.alertmanagerSpec.alertmanagerConfigSelector: {}` +
+  `alertmanagerConfigNamespaceSelector: {}`. Each consumer drops an `AlertmanagerConfig` in
+  **their own namespace**; the operator's default `OnNamespace` matcher strategy scopes it to
+  alerts from that namespace, so tenants stay isolated and never edit central config. A copy-
+  paste starting point is `gitops/examples/msteams-tenant/alertmanagerconfig.yaml` (reference
+  only — not reconciled by Flux).
+- **prometheus-msteams renderer** (`gitops/infrastructure/operators/prometheus-msteams.yaml`,
+  namespace `monitoring`, Service `prometheus-msteams:2000`). `workflowWebhook: true` targets
+  the Power Automate Adaptive Card format (not the deprecated Office 365 connector
+  `MessageCard`). The default connector is assembled from two env vars: `TEAMS_REQUEST_URI`
+  (`alertmanager`, set via `extraEnvs`) and `TEAMS_INCOMING_WEBHOOK_URL` (the Power Automate
+  URL, injected from the SOPS Secret below via `envFrom`). Alertmanager receivers therefore
+  post to `http://prometheus-msteams.monitoring.svc:2000/alertmanager`.
+- **The custom Adaptive Card is version-controlled** in `customCardTemplate` (a Go template
+  producing the Power Automate `type: message` / `attachments` envelope wrapping an
+  `AdaptiveCard` with a heading, summary `TextBlock`, and a per-alert `FactSet` of
+  labels/annotations, colored by `severity`). Edit that template to change the Teams message.
+- **Webhook secret.** `gitops/infrastructure/operators/prometheus-msteams-secret.yaml` is a
+  SOPS-encrypted Secret holding `TEAMS_INCOMING_WEBHOOK_URL`. It ships with a **placeholder**;
+  set the real Power Automate URL with
+  `SOPS_AGE_KEY_FILE=.sops/age.key sops gitops/infrastructure/operators/prometheus-msteams-secret.yaml`.
+- **Power Automate Flow.** In Power Automate, create a flow with the **"When a Teams webhook
+  request is received"** trigger, add a **"Post card in a chat or channel"** action bound to
+  the incoming Adaptive Card, and copy the trigger's HTTP POST URL into the Secret above.
+- **Example rules.** `gitops/infrastructure/operators/pipeline-alerts.yaml` ships a
+  `PrometheusRule` (`PipelineTargetDown`, `PipelinePodNotReady`, `PipelinePodCrashLooping`,
+  scoped to the `olap`/`kafka`/`otel`/`search` namespaces) so alerts fire end to end. Until a
+  consumer routes them, they hit the global `null` receiver and are harmlessly dropped.
+- **Multiple channels.** Register additional prometheus-msteams *connectors* (distinct request
+  paths → distinct Power Automate URLs). To keep those URLs encrypted, provide the connectors
+  config file from a SOPS Secret mounted via `extraVolumeMounts` (setting the container's
+  `-config-file`) rather than the plaintext `connectors` chart value; tenants then route to
+  their connector path.
 
 ### Pinned images
 

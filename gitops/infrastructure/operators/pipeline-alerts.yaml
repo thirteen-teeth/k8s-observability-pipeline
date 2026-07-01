@@ -1,0 +1,55 @@
+---
+# Example alerting rules for the observability pipeline. These deliberately use
+# metrics that are always present (Prometheus `up` + kube-state-metrics) so they
+# work without per-component exporter assumptions, and are scoped to the pipeline
+# namespaces (olap, kafka, otel, search). Until a consumer routes them (via an
+# AlertmanagerConfig in their namespace) they hit the global no-op "null"
+# receiver and do nothing — they simply demonstrate that alerts flow end to end.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pipeline-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: observability-platform
+spec:
+  groups:
+    - name: pipeline.rules
+      rules:
+        # A scrape target in a pipeline namespace has been unreachable for 5m.
+        - alert: PipelineTargetDown
+          expr: up{namespace=~"olap|kafka|otel|search"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pipeline target down ({{ $labels.job }})"
+            description: >-
+              Target {{ $labels.job }} ({{ $labels.namespace }}/{{ $labels.pod }})
+              has been unreachable for more than 5 minutes.
+
+        # A pod in a pipeline namespace has stayed not-Ready for 10m.
+        - alert: PipelinePodNotReady
+          expr: |
+            kube_pod_status_ready{condition="true", namespace=~"olap|kafka|otel|search"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pipeline pod not ready ({{ $labels.namespace }}/{{ $labels.pod }})"
+            description: >-
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not-Ready for
+              more than 10 minutes.
+
+        # A container in a pipeline namespace is restarting repeatedly.
+        - alert: PipelinePodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace=~"olap|kafka|otel|search"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pipeline container crash-looping ({{ $labels.namespace }}/{{ $labels.pod }})"
+            description: >-
+              Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }}
+              has restarted more than 3 times in the last 15 minutes.

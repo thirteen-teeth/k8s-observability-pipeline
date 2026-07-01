@@ -1,0 +1,157 @@
+---
+# prometheus-msteams: receives Alertmanager webhook_configs POSTs and renders a
+# custom Adaptive Card to a Microsoft Teams Power Automate ("Workflows") webhook.
+# Off-the-shelf renderer (no custom code): workflowWebhook targets the Power
+# Automate Adaptive Card format, and customCardTemplate below is the
+# version-controlled card definition.
+#
+# The default connector is created from two env vars (ff maps flags to env):
+#   TEAMS_REQUEST_URI          -> the POST path (set via extraEnvs, non-secret)
+#   TEAMS_INCOMING_WEBHOOK_URL  -> the Power Automate URL (from the SOPS Secret
+#                                  prometheus-msteams-secret.yaml, via envFrom)
+# Alertmanager (or a tenant AlertmanagerConfig) sends to:
+#   http://prometheus-msteams.monitoring.svc:2000/alertmanager
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus-msteams
+  namespace: monitoring
+spec:
+  interval: 30m
+  releaseName: prometheus-msteams
+  chart:
+    spec:
+      chart: prometheus-msteams
+      version: "1.3.6"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-msteams
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    image:
+      pullPolicy: IfNotPresent
+    # Target the Microsoft Power Automate / Workflows webhook (Adaptive Card),
+    # not the deprecated Office 365 connector MessageCard format.
+    workflowWebhook: true
+    # Non-secret half of the default connector: the request path. The secret
+    # half (TEAMS_INCOMING_WEBHOOK_URL) comes from the Secret via envFrom.
+    extraEnvs:
+      TEAMS_REQUEST_URI: alertmanager
+    envFrom:
+      - secretRef:
+          name: prometheus-msteams
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "10m"
+      limits:
+        memory: "64Mi"
+        cpu: "100m"
+    # Scraped by Prometheus (the stack discovers all ServiceMonitors).
+    metrics:
+      serviceMonitor:
+        enabled: true
+    # Version-controlled custom Adaptive Card (Power Automate "type: message"
+    # envelope wrapping an AdaptiveCard). Based on the upstream workflow default,
+    # with the heading color fixed to actually track alert severity (upstream
+    # used ':=' which shadowed the variable, and a lower-case color name). Edit
+    # this to change what the Teams message looks like.
+    customCardTemplate: |
+      {{ define "teams.card" }}
+
+      {{- $cardHeadingLineColor := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAECAAAAABqswrmAAAAEElEQVR42mJogEBAAAAA//8ICAIBsBUbsAAAAABJRU5ErkJggg==" }}
+      {{- $headingColor := "Default" }}
+      {{- if eq .Status "resolved" -}}
+        {{- $cardHeadingLineColor = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAECAIAAADAusJtAAAAEklEQVR42mLQPa6LjAEBAAD//yQwBIUSNPBIAAAAAElFTkSuQmCC" -}}
+        {{- $headingColor = "Good" }}
+      {{- else if eq .Status "firing" -}}
+        {{- if eq .CommonLabels.severity "critical" -}}
+        {{- $cardHeadingLineColor = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAECAIAAADAusJtAAAAEklEQVR42mLokZJCxoAAAAD//xnYAwEPSWrRAAAAAElFTkSuQmCC" }}
+        {{- $headingColor = "Attention" }}
+        {{- else if eq .CommonLabels.severity "warning" -}}
+        {{- $cardHeadingLineColor = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAECAIAAADAusJtAAAAEklEQVR42mL4v5QBGQMCAAD//ziMBpHr7M3UAAAAAElFTkSuQmCC" }}
+        {{- $headingColor = "Warning" }}
+        {{- end -}}
+      {{- end -}}
+
+      {
+        "type":"message",
+        "attachments":[
+        {
+            "contentType":"application/vnd.microsoft.card.adaptive",
+            "contentUrl":null,
+            "content":{
+              "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+              "type": "AdaptiveCard",
+              "version": "1.2",
+              "backgroundImage": {
+                  "url": "{{- $cardHeadingLineColor -}}",
+                  "fillMode": "RepeatHorizontally"
+              },
+              "msteams": {
+                  "width": "Full"
+              },
+              "body": [
+                  {
+                    "type": "TextBlock",
+                    "text": "Prometheus Alert ({{ .Status | title }})",
+                    "weight": "bolder",
+                    "size": "medium",
+                    "style": "heading",
+                    "color": "{{- $headingColor -}}"
+                  },
+                  {
+                    "type": "TextBlock",
+                    "text": "{{- if eq .CommonAnnotations.summary "" -}}
+                    {{- if eq .CommonAnnotations.message "" -}}
+                      {{- if eq .CommonLabels.alertname "" -}}
+                        Prometheus Alert
+                      {{- else -}}
+                        {{- .CommonLabels.alertname -}}
+                      {{- end -}}
+                    {{- else -}}
+                      {{- .CommonAnnotations.message -}}
+                    {{- end -}}
+                {{- else -}}
+                    {{- .CommonAnnotations.summary -}}
+                {{- end -}}",
+                    "wrap": true
+                  },
+                  {{$externalUrl := .ExternalURL}}
+                  {{- range $index, $alert := .Alerts }}{{- if $index }},{{- end }}
+                  {
+                    "type": "TextBlock",
+                    "text": "[{{ $alert.Annotations.description }}]({{ $externalUrl }})",
+                    "wrap": true
+                  },
+                  {
+                    "type": "FactSet",
+                    "facts": [
+                      {{- range $key, $value := $alert.Annotations }}
+                      {
+                        {{- if ne $key "description" -}}
+                          "title": "{{ $key }}",
+                          "value": "{{ $value }}"
+                        {{- end -}}
+                      },
+                      {{- end -}}
+                      {{$c := counter}}{{ range $key, $value := $alert.Labels }}{{if call $c}},{{ end }}
+                      {
+                        "title": "{{ $key }}",
+                        "value": "{{ $value }}"
+                      }
+                      {{- end }}
+                    ]
+                  }
+                {{- end }}
+              ]
+            }
+        }]
+      }
+      {{ end }}

@@ -58,8 +58,10 @@ Credentials are stored encrypted with [SOPS](https://github.com/getsops/sops)
 OpenSearch admin credentials (`gitops/apps/base/opensearch/admin-secret.yaml`) and ETL user
 password (`gitops/apps/base/opensearch/etl-user-secret.yaml`), the Kafka SCRAM user
 passwords (`gitops/apps/base/kafka/sasl-users-secret.yaml`), the collectors' copies of
-all ETL credentials (`gitops/apps/base/otel/etl-credentials.yaml`), and the Grafana admin /
-data-source credentials (`gitops/infrastructure/operators/monitoring-credentials.yaml`).
+all ETL credentials (`gitops/apps/base/otel/etl-credentials.yaml`), the Grafana admin /
+data-source credentials (`gitops/infrastructure/operators/monitoring-credentials.yaml`), and
+the Microsoft Teams Power Automate webhook URL
+(`gitops/infrastructure/operators/prometheus-msteams-secret.yaml`).
 The age recipient is in `.sops.yaml`; the private key `.sops/age.key` is gitignored and
 must **not** be committed. Before bootstrapping a cluster, load the key so Flux can
 decrypt:
@@ -86,6 +88,23 @@ kubectl -n monitoring get secret grafana-credentials -o jsonpath='{.data.admin-p
 
 Grafana comes provisioned with three data sources (Prometheus, ClickHouse, OpenSearch) — see
 `ARCHITECTURE.md` for details.
+
+### Alerts to Microsoft Teams
+
+Alertmanager delivers alerts to a Microsoft Teams channel as a custom Adaptive Card via a
+Power Automate ("Workflows") webhook, rendered by the `prometheus-msteams` HelmRelease
+(`gitops/infrastructure/operators/prometheus-msteams.yaml`). Alerting is self-service: drop an
+`AlertmanagerConfig` in your namespace routing to
+`http://prometheus-msteams.monitoring.svc:2000/alertmanager` (see
+`gitops/examples/msteams-tenant/alertmanagerconfig.yaml`). Before alerts reach Teams, set the
+real webhook URL in the SOPS-encrypted Secret (it ships with a placeholder):
+
+```bash
+SOPS_AGE_KEY_FILE=.sops/age.key sops gitops/infrastructure/operators/prometheus-msteams-secret.yaml
+```
+
+See `ARCHITECTURE.md` for the Power Automate Flow setup and the version-controlled Adaptive
+Card template.
 
 ### Query the stored telemetry (ClickHouse & OpenSearch)
 
